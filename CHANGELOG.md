@@ -14,7 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production-ready error handling
 - Performance optimizations
 
-## [0.1.0] - 2024-12-XX
+## [0.2.0] - 2026-01-15
+
+### Planned
+- [Add future features here]
+
+## [0.1.0] - 2025-12-03
 
 ### Added
 - Initial SDK release

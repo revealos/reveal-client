@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/revealos/reveal-sdk/workflows/CI/badge.svg)](https://github.com/revealos/reveal-sdk/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/@reveal/sdk)](https://www.npmjs.com/package/@reveal/sdk)
+<!-- npm badge will be added when package is published -->
 
 A lightweight, framework-agnostic SDK that detects user friction and displays contextual nudges to guide users toward value.
 
