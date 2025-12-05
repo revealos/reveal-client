@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **StallDetector**: Friction detection for user hesitation/idle behavior
+  - Detects when users remain idle for 20+ seconds without meaningful activity
+  - Distinguishes between meaningful activity (clicks, keyboard input, form submissions, navigation) and meaningless activity (mouse movement, scrolling, hover)
+  - Context-based idle watching with `Reveal.startIdleWatch()`, `Reveal.stopIdleWatch()`, and `Reveal.markContextClosed()` APIs
+  - Auto-starts global stall detection on SDK initialization
+  - Emits `friction_idle` events when stall conditions are detected
+- **New Public APIs**:
+  - `Reveal.startIdleWatch({ context, selector, timeoutMs })` - Start watching a specific context for idle behavior
+  - `Reveal.stopIdleWatch(context)` - Stop watching a context
+  - `Reveal.markContextClosed(context)` - Mark a context as closed and reset timers
+- **Logger utility**: Internal logging system with debug mode support
+- **Safe error handling**: Wrappers to prevent SDK errors from crashing host applications
+- Improved SDK initialization to prevent race conditions with `Reveal.track()`
+- Consolidated meaningful activity detection to prevent duplicate event logging
+
+### Changed
+- TypeScript configuration now includes DOM types for browser API support
+- SDK initialization is now async-safe
+
 ### Planned
 - Full PII scrubbing implementation
 - Complete audit logging system
