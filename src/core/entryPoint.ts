@@ -19,9 +19,12 @@ import { safeTry, safeTryAsync } from "../utils/safe";
 import { createDetectorManager, type DetectorManager } from "../modules/detectorManager";
 import { createSessionManager, type SessionManager } from "../modules/sessionManager";
 import { createDecisionClient, type DecisionClient } from "../modules/decisionClient";
+import { createTransport, type Transport } from "../modules/transport";
+import { createEventPipeline, type EventPipeline } from "../modules/eventPipeline";
 import type { FrictionSignal } from "../types/friction";
 import type { ClientConfig } from "../types/config";
 import type { WireNudgeDecision } from "../types/decisions";
+import type { EventKind } from "../types/events";
 
 // Global singleton state (closure scope, not exposed)
 let isInitialized = false;
@@ -30,8 +33,8 @@ let isDisabled = false;
 // Internal module references (held in closure)
 let configClient: any = null;
 let sessionManager: SessionManager | null = null;
-let eventPipeline: any = null;
-let transport: any = null;
+let eventPipeline: EventPipeline | null = null;
+let transport: Transport | null = null;
 let detectorManager: DetectorManager | null = null;
 let decisionClient: DecisionClient | null = null;
 let logger: Logger | null = null;
@@ -83,6 +86,27 @@ export async function init(
   // ORCHESTRATE: Async initialization flow
   safeTryAsync(async () => {
     loggerRef.logDebug("Reveal SDK initializing.");
+
+    // ──────────────────────────────────────────────────────────────────────
+    // RESOLVE INGEST ENDPOINT
+    // ──────────────────────────────────────────────────────────────────────
+    // Support both ingestEndpoint (explicit) and endpoint (backward compat)
+    // Also support apiBase + "/ingest" pattern
+    let ingestEndpoint: string;
+    if (options.ingestEndpoint && typeof options.ingestEndpoint === "string") {
+      ingestEndpoint = options.ingestEndpoint;
+    } else if (options.endpoint && typeof options.endpoint === "string") {
+      // Backward compatibility: if endpoint provided, use it (harness uses this)
+      ingestEndpoint = options.endpoint;
+      loggerRef.logWarn(
+        "Using 'endpoint' option is deprecated, use 'ingestEndpoint' instead"
+      );
+    } else if (options.apiBase && typeof options.apiBase === "string") {
+      ingestEndpoint = `${options.apiBase}/ingest`;
+    } else {
+      ingestEndpoint = "https://api.reveal.io/ingest";
+    }
+    loggerRef.logDebug("Resolved ingest endpoint", { ingestEndpoint });
 
     // For now, create a minimal config for DetectorManager to work
     // TODO: Replace with real ConfigClient when implemented
@@ -152,37 +176,58 @@ export async function init(
       }, loggerRef, "onFrictionSignal");
     }
 
-    // ============================================================================
-    // MINIMAL MODE: Stub EventPipeline (TEMPORARY - REMOVE WHEN REAL PIPELINE IMPLEMENTED)
-    // ============================================================================
-    // TODO: Replace this stub with real createEventPipeline() when EventPipeline is implemented
-    // Search for "MINIMAL MODE: Stub EventPipeline" to find and remove this
-    // ============================================================================
-    eventPipeline = {
-      captureEvent: (kind: string, name: string, payload?: Record<string, any>) => {
-        loggerRef.logDebug("Event captured (minimal mode - stub pipeline)", {
-          kind,
-          name,
-          payload,
-        });
-        // TODO: Replace with real EventPipeline.captureEvent() implementation
-      },
-      flush: async (force?: boolean, mode?: string) => {
-        loggerRef.logDebug("EventPipeline flush called (minimal mode - stub)", {
-          force,
-          mode,
-        });
-        // TODO: Replace with real EventPipeline.flush() implementation
-      },
-      destroy: () => {
-        loggerRef.logDebug("EventPipeline destroy called (minimal mode - stub)");
-        // TODO: Replace with real EventPipeline.destroy() implementation
-      },
-    };
-    // ============================================================================
 
-    // STEP: Initialize SessionManager (provides session context for decisions)
+    // STEP: Initialize SessionManager (provides session context for decisions and events)
     sessionManager = createSessionManager({ logger: loggerRef });
+
+    // STEP: Initialize Transport (HTTP transport for event batches)
+    safeTry(() => {
+      transport = createTransport({
+        endpointUrl: ingestEndpoint,
+        clientKey: clientKey,
+        logger: loggerRef,
+      });
+      loggerRef.logDebug("Transport initialized", { endpointUrl: ingestEndpoint });
+    }, loggerRef, "Transport creation");
+
+    // STEP: Initialize EventPipeline (event buffering and enrichment)
+    safeTry(() => {
+      if (!transport) {
+        loggerRef.logError("Transport not available, EventPipeline cannot be created");
+        return;
+      }
+      if (!sessionManager) {
+        loggerRef.logError("SessionManager not available, EventPipeline cannot be created");
+        return;
+      }
+
+      eventPipeline = createEventPipeline({
+        sessionManager: sessionManager,
+        transport: transport,
+        logger: loggerRef,
+        config: {
+          maxFlushIntervalMs: 5000,
+          maxBufferSize: 1000,
+          eventBatchSize: 20,
+          maxEventRetries: 2,
+        },
+        getCurrentLocation: () => {
+          // Browser environment: use window.location
+          if (typeof window !== "undefined" && window.location) {
+            return { path: window.location.pathname };
+          }
+          return { path: null };
+        },
+      });
+
+      // Start periodic flush for automatic event sending
+      safeTry(() => {
+        eventPipeline?.startPeriodicFlush();
+        loggerRef.logDebug("EventPipeline periodic flush started");
+      }, loggerRef, "EventPipeline.startPeriodicFlush");
+
+      loggerRef.logDebug("EventPipeline initialized");
+    }, loggerRef, "EventPipeline creation");
 
     // STEP: Initialize DecisionClient (requests nudge decisions from backend)
     decisionClient = createDecisionClient({
@@ -239,10 +284,9 @@ export function track(
     return;
   }
   
-  // Note: eventPipeline is always set in init() (minimal stub for now)
-  // See "MINIMAL MODE: Stub EventPipeline" comment in init() function
+  // EventPipeline may be null if initialization failed (fail-open)
   if (!eventPipeline) {
-    logger?.logWarn("EventPipeline not available (should not happen)", {
+    logger?.logWarn("EventPipeline not available, event ignored", {
       eventKind,
       eventType,
     });
@@ -250,8 +294,8 @@ export function track(
   }
 
   // Simple guard for allowed event kinds
-  const allowedKinds = ["product", "friction", "nudge", "session"];
-  if (!allowedKinds.includes(eventKind)) {
+  const allowedKinds: EventKind[] = ["product", "friction", "nudge", "session"];
+  if (!allowedKinds.includes(eventKind as EventKind)) {
     logger?.logWarn("Reveal.track(): invalid eventKind, ignoring", {
       eventKind,
       eventType,
@@ -260,7 +304,7 @@ export function track(
   }
 
   eventPipeline.captureEvent(
-    eventKind,
+    eventKind as EventKind,
     eventType,
     properties || {}
   );
@@ -317,13 +361,16 @@ function notifyNudgeSubscribers(decision: WireNudgeDecision) {
 
 function cleanup() {
   // Tear down any partially initialized modules
+  // Order matters: stop detectors first, then pipeline (which may flush), then others
+  
   if (detectorManager) {
     const dm = detectorManager; // Capture for TypeScript narrowing
     safeTry(() => dm.destroy(), logger || undefined, "cleanup:detectors");
   }
 
   if (eventPipeline) {
-    safeTry(() => eventPipeline.destroy(), logger || undefined, "cleanup:pipeline");
+    const ep = eventPipeline; // Capture for TypeScript narrowing
+    safeTry(() => ep.destroy(), logger || undefined, "cleanup:pipeline");
   }
 
   if (sessionManager) {

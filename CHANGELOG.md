@@ -12,11 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Buffers events in memory with configurable batch size and flush intervals
   - Enriches events with session context, location, viewport, and user agent metadata
   - Transforms nudge payloads from camelCase to snake_case for backend compatibility
-  - Automatic batch flushing based on size threshold or time interval
+  - Automatic batch flushing based on size threshold (20 events) or time interval (5 seconds)
   - Retry logic with exponential backoff for failed sends
   - Buffer overflow protection with critical event prioritization (friction, session events preserved)
   - Final flush on destroy using beacon mode for page unload scenarios
   - Comprehensive unit test coverage (40 tests)
+- **Transport**: HTTP transport layer for event batches
+  - Sends event batches to backend `/ingest` endpoint via `fetch` API
+  - Supports `fetch` mode (with retries) and `sendBeacon` mode (for page unload)
+  - Classifies network and HTTP errors (retryable vs. non-retryable)
+  - Implements exponential backoff for retryable errors
+  - Handles request timeouts via `AbortController`
+  - Custom `HttpError` and `NetworkError` classes for error handling
+  - Comprehensive unit test coverage (66 tests)
+- **EntryPoint wiring**: Integrated EventPipeline, Transport, and SessionManager into SDK core flow
+  - EventPipeline and Transport initialized during SDK `init()`
+  - Automatic periodic flush started on initialization
+  - `ingestEndpoint` configuration option for event ingestion URL
+  - Proper cleanup on SDK `destroy()` (flushes events, destroys modules)
 - **StallDetector**: Friction detection for user hesitation/idle behavior
   - Detects when users remain idle for 20+ seconds without meaningful activity
   - Distinguishes between meaningful activity (clicks, keyboard input, form submissions, navigation) and meaningless activity (mouse movement, scrolling, hover)

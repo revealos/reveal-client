@@ -350,9 +350,16 @@ export function createEventPipeline(
         eventBuffer.push(enrichedEvent);
 
         // Check if buffer size threshold reached
+        logger?.logDebug("EventPipeline: buffer check", {
+          currentLength: eventBuffer.length,
+          batchSize,
+          shouldFlush: eventBuffer.length >= batchSize,
+        });
+
         if (eventBuffer.length >= batchSize) {
           logger?.logDebug(
-            "EventPipeline: batch size reached, triggering flush"
+            "EventPipeline: batch size reached, triggering flush",
+            { bufferLength: eventBuffer.length, batchSize }
           );
           // Fire-and-forget flush (don't await)
           flush(false, "normal").catch((error) => {
@@ -396,9 +403,23 @@ export function createEventPipeline(
       const shouldFlushByTime = timeSinceLastFlush >= maxFlushIntervalMs;
       const shouldFlushBySize = eventBuffer.length >= batchSize;
 
+      logger?.logDebug("EventPipeline: flush condition check", {
+        timeSinceLastFlush,
+        maxFlushIntervalMs,
+        bufferLength: eventBuffer.length,
+        batchSize,
+        shouldFlushByTime,
+        shouldFlushBySize,
+        willFlush: shouldFlushByTime || shouldFlushBySize,
+      });
+
       if (!shouldFlushByTime && !shouldFlushBySize) {
         logger?.logDebug(
-          "EventPipeline: conditions not met for flush, waiting"
+          "EventPipeline: conditions not met for flush, waiting",
+          {
+            timeSinceLastFlush,
+            bufferLength: eventBuffer.length,
+          }
         );
         return;
       }
@@ -451,6 +472,13 @@ export function createEventPipeline(
         () => {
           const timeSinceLastFlush = now() - lastFlushTimestamp;
 
+          logger?.logDebug("EventPipeline: periodic flush check", {
+            timeSinceLastFlush,
+            maxFlushIntervalMs,
+            bufferLength: eventBuffer.length,
+            shouldFlush: timeSinceLastFlush >= maxFlushIntervalMs && eventBuffer.length > 0,
+          });
+
           if (
             timeSinceLastFlush >= maxFlushIntervalMs &&
             eventBuffer.length > 0
@@ -459,6 +487,12 @@ export function createEventPipeline(
             // Fire-and-forget flush (don't await)
             flush(false, "normal").catch((error) => {
               logger?.logError("EventPipeline: periodic flush failed", error);
+            });
+          } else {
+            logger?.logDebug("EventPipeline: periodic flush skipped", {
+              reason: timeSinceLastFlush < maxFlushIntervalMs
+                ? "time not reached"
+                : "buffer empty",
             });
           }
         },
