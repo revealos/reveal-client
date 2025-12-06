@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **EventPipeline**: Complete event buffering and enrichment module
+  - Buffers events in memory with configurable batch size and flush intervals
+  - Enriches events with session context, location, viewport, and user agent metadata
+  - Transforms nudge payloads from camelCase to snake_case for backend compatibility
+  - Automatic batch flushing based on size threshold or time interval
+  - Retry logic with exponential backoff for failed sends
+  - Buffer overflow protection with critical event prioritization (friction, session events preserved)
+  - Final flush on destroy using beacon mode for page unload scenarios
+  - Comprehensive unit test coverage (40 tests)
 - **StallDetector**: Friction detection for user hesitation/idle behavior
   - Detects when users remain idle for 20+ seconds without meaningful activity
   - Distinguishes between meaningful activity (clicks, keyboard input, form submissions, navigation) and meaningless activity (mouse movement, scrolling, hover)
