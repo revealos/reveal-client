@@ -18,6 +18,7 @@ import { onNudgeDecision } from "../core/entryPoint";
 import { track } from "../core/entryPoint";
 import type { WireNudgeDecision } from "../types/decisions";
 import { mapWireToUI, type UINudgeDecision } from "../types/uiDecision";
+import type { EventPayload } from "../types/events";
 
 export interface UseNudgeDecisionResult {
   /** Current nudge decision in UI format, or null if no active decision */
@@ -29,7 +30,7 @@ export interface UseNudgeDecisionResult {
     /** Call when nudge action/CTA is clicked */
     onActionClick: (nudgeId: string) => void;
     /** Callback for tracking events (e.g., passed to RevealNudgeHost) */
-    onTrack: (kind: string, name: string, payload?: Record<string, any>) => void;
+    onTrack: (kind: string, name: string, payload?: EventPayload) => void;
   };
 }
 
@@ -146,7 +147,7 @@ export function useNudgeDecision(): UseNudgeDecisionResult {
 
   // Handler for tracking events (passed to RevealNudgeHost)
   const handleTrack = useCallback(
-    (kind: string, name: string, payload?: Record<string, any>) => {
+    (kind: string, name: string, payload?: EventPayload) => {
       track(kind, name, payload);
     },
     []

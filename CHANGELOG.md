@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **EventPayload type**: Explicit type export for event properties (`Record<string, any>`)
+  - Provides clear type definition for event payloads throughout the SDK
+  - Exported from `@reveal/sdk` for use in host applications
+  - Used consistently across `Reveal.track()`, `EventPipeline`, and internal event handling
+
+### Changed
+- **Error handling**: Wrapped `createDecisionClient` initialization in `safeTry` to prevent host app crashes
+  - DecisionClient validation errors now fail safely instead of throwing
+  - SDK continues to function even if DecisionClient initialization fails
+  - Aligns with SDK boundary requirements (errors must not crash host app)
+- **Type consistency**: Updated all event payload types to use `EventPayload` instead of `Record<string, any>`
+  - `Reveal.track()` now uses `EventPayload` type
+  - `EventPipeline.captureEvent()` now uses `EventPayload` type
+  - Internal event enrichment functions use `EventPayload` type
+  - Improves type clarity and consistency across the SDK
+
+### Added
 - **EventPipeline**: Complete event buffering and enrichment module
   - Buffers events in memory with configurable batch size and flush intervals
   - Enriches events with session context, location, viewport, and user agent metadata

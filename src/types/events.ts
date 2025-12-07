@@ -22,6 +22,14 @@ export type Environment = "production" | "staging" | "development";
 export type EventSource = "system" | "user";
 
 /**
+ * Event payload type
+ * 
+ * Event payloads are flat objects containing event-specific properties.
+ * All values must be primitives (string, number, boolean, null).
+ */
+export type EventPayload = Record<string, any>;
+
+/**
  * Base event structure (SDK internal)
  */
 export interface BaseEvent {
@@ -37,6 +45,6 @@ export interface BaseEvent {
   user_agent: string;
   viewport_width: number;
   viewport_height: number;
-  payload: Record<string, any>;
+  payload: EventPayload;
 }
 

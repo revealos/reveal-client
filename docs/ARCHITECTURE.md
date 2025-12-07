@@ -4,21 +4,23 @@
 
 The Reveal SDK is a lightweight, framework-agnostic library that detects user friction and displays nudges based on backend decisions.
 
+**Key Architecture Principle:** The SDK is a **headless sensor layer** by default. It detects friction, tracks events, and receives decisions, but does **not** render UI. The optional `@reveal/overlay-ui` package provides React components for rendering nudges.
+
 ## Module Structure
 
 ### Core
-- **EntryPoint**: Main orchestration layer
+- **EntryPoint**: Main orchestration layer - wires together all modules and provides public API
 
 ### Modules
-- **ConfigClient**: Fetches client-safe configuration
-- **SessionManager**: Manages session lifecycle
-- **EventPipeline**: Buffers and sends events
-- **Transport**: HTTP transport layer
-- **DecisionClient**: Requests nudge decisions
+- **ConfigClient**: Fetches client-safe configuration (future: will fetch from backend)
+- **SessionManager**: Manages session lifecycle and context
+- **EventPipeline**: Buffers and sends events to backend
+- **Transport**: HTTP transport layer for event batches
+- **DecisionClient**: Requests nudge decisions from backend
 - **DetectorManager**: Orchestrates friction detection
 
 ### Detectors
-- **StallDetector**: Detects user hesitation
+- **StallDetector**: Detects user hesitation/idle behavior
 - **RageClickDetector**: Detects rapid repeated clicks
 - **BacktrackDetector**: Detects backward navigation
 
@@ -30,12 +32,81 @@ The Reveal SDK is a lightweight, framework-agnostic library that detects user fr
 ### Utilities
 - Logger, safe wrappers, UUID generation, location helpers
 
+## Runtime Flow
+
+Here's how the SDK works at runtime:
+
+```
+1. App Startup
+   └─> Reveal.init(clientKey, options?)
+       ├─> Initialize Logger
+       ├─> Initialize SessionManager (creates session)
+       ├─> Initialize Transport (HTTP client)
+       ├─> Initialize EventPipeline (event buffering)
+       ├─> Initialize DecisionClient (decision requests)
+       └─> Initialize DetectorManager (friction detection)
+           └─> Start detectors (StallDetector, RageClickDetector, BacktrackDetector)
+
+2. User Interaction
+   └─> DetectorManager detects friction
+       └─> Emits FrictionSignal
+           ├─> EventPipeline.captureEvent('friction', ...)
+           │   └─> Buffers event, sends to backend via Transport
+           └─> DecisionClient.requestDecision(signal)
+               └─> Backend returns WireNudgeDecision (or null)
+                   └─> EntryPoint.notifyNudgeSubscribers(decision)
+                       └─> Host app receives decision via:
+                           ├─> Reveal.onNudgeDecision(callback) [framework-agnostic]
+                           └─> useNudgeDecision() hook [React only]
+                               └─> RevealNudgeHost renders nudge [optional React UI]
+
+3. Event Tracking
+   └─> Reveal.track(eventKind, eventType, properties?)
+       └─> EventPipeline.captureEvent(...)
+           └─> Buffers event, sends to backend via Transport
+
+4. App Shutdown
+   └─> Reveal.destroy()
+       ├─> DetectorManager.destroy() (removes listeners)
+       ├─> EventPipeline.destroy() (flushes remaining events)
+       └─> SessionManager.endSession()
+```
+
 ## Design Principles
 
-1. Client is sensors, not brain
-2. Backend is source of truth
-3. Strict contracts
-4. Separation of concerns
-5. Safety & resilience
-6. Performance
+1. **Client is sensors, not brain** - SDK detects and reports, backend decides
+2. **Backend is source of truth** - All decisions come from backend
+3. **Strict contracts** - Well-defined interfaces between SDK and backend
+4. **Separation of concerns** - Each module has a single responsibility
+5. **Safety & resilience** - SDK never crashes host app, fails gracefully
+6. **Performance** - Minimal bundle size, lazy loading, efficient event batching
+
+## SDK vs Overlay UI
+
+**SDK (`@reveal/sdk`):**
+- Framework-agnostic
+- Headless (no UI rendering)
+- Detects friction
+- Tracks events
+- Receives decisions
+- Provides subscription API
+
+**Overlay UI (`@reveal/overlay-ui`):**
+- React-only
+- Optional UI layer
+- Renders nudge templates
+- Consumes decisions from SDK
+- Provides `RevealNudgeHost` component
+- Provides `useNudgeDecision` hook (re-exported from SDK)
+
+**Integration Pattern:**
+```typescript
+// SDK (always needed)
+import { Reveal } from '@reveal/sdk';
+await Reveal.init('client-key');
+
+// Overlay UI (optional, React only)
+import { useNudgeDecision } from '@reveal/sdk'; // or '@reveal/overlay-ui'
+import { RevealNudgeHost } from '@reveal/overlay-ui';
+```
 

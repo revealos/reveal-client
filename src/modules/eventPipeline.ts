@@ -18,7 +18,7 @@
  * @module modules/eventPipeline
  */
 
-import type { EventKind, BaseEvent, EventSource } from "../types/events";
+import type { EventKind, BaseEvent, EventSource, EventPayload } from "../types/events";
 import type { SessionManager } from "./sessionManager";
 import type { Transport } from "./transport";
 import type { Logger } from "../utils/logger";
@@ -48,7 +48,7 @@ export interface EventPipelineOptions {
  * EventPipeline interface
  */
 export interface EventPipeline {
-  captureEvent(kind: EventKind, name: string, payload?: Record<string, any>): void;
+  captureEvent(kind: EventKind, name: string, payload?: EventPayload): void;
   flush(force?: boolean, mode?: "normal" | "beacon"): Promise<void>;
   startPeriodicFlush(): void;
   destroy(): void;
@@ -131,7 +131,7 @@ export function createEventPipeline(
   function enrichEvent(
     kind: EventKind,
     name: string,
-    payload: Record<string, any> = {}
+    payload: EventPayload = {}
   ): BaseEvent {
     // Get current session (may be null if session not yet started)
     const session = sessionManager.getCurrentSession();
@@ -188,8 +188,8 @@ export function createEventPipeline(
   // INTERNAL: transformNudgePayload()
   // ──────────────────────────────────────────────────────────────────────
   function transformNudgePayload(
-    payload: Record<string, any>
-  ): Record<string, any> {
+    payload: EventPayload
+  ): EventPayload {
     if (!payload || typeof payload !== "object") {
       return payload;
     }
@@ -340,7 +340,7 @@ export function createEventPipeline(
   function captureEvent(
     kind: EventKind,
     name: string,
-    payload: Record<string, any> = {}
+    payload: EventPayload = {}
   ): void {
     if (isDestroyed) {
       logger?.logDebug("EventPipeline: destroyed, ignoring event");

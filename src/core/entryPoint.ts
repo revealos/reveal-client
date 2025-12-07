@@ -24,7 +24,7 @@ import { createEventPipeline, type EventPipeline } from "../modules/eventPipelin
 import type { FrictionSignal } from "../types/friction";
 import type { ClientConfig } from "../types/config";
 import type { WireNudgeDecision } from "../types/decisions";
-import type { EventKind } from "../types/events";
+import type { EventKind, EventPayload } from "../types/events";
 
 // Global singleton state (closure scope, not exposed)
 let isInitialized = false;
@@ -238,14 +238,17 @@ export async function init(
     }, loggerRef, "EventPipeline creation");
 
     // STEP: Initialize DecisionClient (requests nudge decisions from backend)
-    decisionClient = createDecisionClient({
-      endpoint: minimalConfig.decision.endpoint,
-      timeoutMs: minimalConfig.decision.timeoutMs,
-      projectId: minimalConfig.projectId,
-      environment: minimalConfig.environment,
-      clientKey: clientKey,
-      logger: loggerRef,
-    });
+    safeTry(() => {
+      decisionClient = createDecisionClient({
+        endpoint: minimalConfig.decision.endpoint,
+        timeoutMs: minimalConfig.decision.timeoutMs,
+        projectId: minimalConfig.projectId,
+        environment: minimalConfig.environment,
+        clientKey: clientKey,
+        logger: loggerRef,
+      });
+      loggerRef.logDebug("DecisionClient initialized");
+    }, loggerRef, "DecisionClient creation");
 
     detectorManager = createDetectorManager({
       config: minimalConfig,
@@ -278,7 +281,7 @@ export async function init(
 export function track(
   eventKind: string,
   eventType: string,
-  properties: Record<string, any> = {}
+  properties: EventPayload = {}
 ): void {
   if (isDisabled) {
     return;
