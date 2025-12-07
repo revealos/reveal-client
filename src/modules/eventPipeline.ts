@@ -41,7 +41,7 @@ export interface EventPipelineOptions {
   transport: Transport;
   logger?: Logger;
   config?: Partial<EventPipelineConfig>;
-  getCurrentLocation?: () => { path?: string | null; route?: string | null; screen?: string | null };
+  getCurrentLocation?: () => { path: string | null; route: string | null; screen: string | null };
 }
 
 /**
@@ -73,9 +73,17 @@ export function createEventPipeline(
     getCurrentLocation = () => {
       // Default location getter (browser environment)
       if (typeof window !== "undefined" && window.location) {
-        return { path: window.location.pathname };
+        return { 
+          path: window.location.pathname,
+          route: null,
+          screen: null,
+        };
       }
-      return { path: null };
+      return { 
+        path: null,
+        route: null,
+        screen: null,
+      };
     },
     config = {},
   } = options;

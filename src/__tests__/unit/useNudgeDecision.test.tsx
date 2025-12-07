@@ -228,10 +228,19 @@ describe('useNudgeDecision', () => {
   });
 
   it('should auto-dismiss nudge on navigation (pathname change)', async () => {
-    // Mock window.location
+    // Mock window.location using Object.defineProperty to properly override read-only property
     const originalLocation = window.location;
-    delete (window as any).location;
-    window.location = { ...originalLocation, pathname: '/initial-page' } as Location;
+    let currentPathname = '/initial-page';
+
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      value: {
+        ...originalLocation,
+        get pathname() {
+          return currentPathname;
+        },
+      },
+    });
 
     const { result } = renderHook(() => useNudgeDecision());
 
@@ -247,7 +256,7 @@ describe('useNudgeDecision', () => {
     });
 
     // Simulate navigation by changing pathname
-    window.location = { ...originalLocation, pathname: '/new-page' } as Location;
+    currentPathname = '/new-page';
 
     // Trigger popstate event to simulate navigation
     window.dispatchEvent(new PopStateEvent('popstate'));
@@ -265,7 +274,10 @@ describe('useNudgeDecision', () => {
     );
 
     // Restore original location
-    window.location = originalLocation;
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      value: originalLocation,
+    });
   });
 });
 
