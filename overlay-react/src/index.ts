@@ -8,10 +8,10 @@
  */
 
 // Main host component
-export { RevealNudgeHost } from "./components/RevealNudgeHost";
-export type { RevealNudgeHostProps } from "./components/RevealNudgeHost";
+export { OverlayManager } from "./components/OverlayManager";
+export type { OverlayManagerProps } from "./components/OverlayManager";
 
-// Template components (optional - RevealNudgeHost handles routing internally)
+// Template components (optional - OverlayManager handles routing internally)
 // export { SpotlightNudge } from "./components/templates/SpotlightNudge";
 // export { BannerNudge } from "./components/templates/BannerNudge";
 export { TooltipNudge } from "./components/templates/TooltipNudge";

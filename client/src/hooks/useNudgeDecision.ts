@@ -29,7 +29,7 @@ export interface UseNudgeDecisionResult {
     onDismiss: (nudgeId: string) => void;
     /** Call when nudge action/CTA is clicked */
     onActionClick: (nudgeId: string) => void;
-    /** Callback for tracking events (e.g., passed to RevealNudgeHost) */
+    /** Callback for tracking events (e.g., passed to OverlayManager) */
     onTrack: (kind: string, name: string, payload?: EventPayload) => void;
   };
 }
@@ -45,7 +45,7 @@ export interface UseNudgeDecisionResult {
  * return (
  *   <>
  *     {children}
- *     <RevealNudgeHost decision={decision} {...handlers} />
+ *     <OverlayManager decision={decision} {...handlers} />
  *   </>
  * );
  * ```
@@ -145,7 +145,7 @@ export function useNudgeDecision(): UseNudgeDecisionResult {
     setDecision(null);
   }, []);
 
-  // Handler for tracking events (passed to RevealNudgeHost)
+  // Handler for tracking events (passed to OverlayManager)
   const handleTrack = useCallback(
     (kind: string, name: string, payload?: EventPayload) => {
       track(kind, name, payload);

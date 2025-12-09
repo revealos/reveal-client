@@ -1,11 +1,11 @@
 /**
- * RevealNudgeHost Component
+ * OverlayManager Component
  * 
  * Main host component that renders the appropriate nudge template
  * based on the current NudgeDecision. Acts as the single entry point
  * for rendering nudges in a React app.
  * 
- * @module components/RevealNudgeHost
+ * @module components/OverlayManager
  */
 
 "use client";
@@ -18,7 +18,7 @@ import { useTargetRect } from "../hooks/useTargetRect";
 import { useTrackNudgeShown } from "../hooks/useTrackNudgeShown";
 import { TooltipNudge } from "./templates/TooltipNudge";
 
-export interface RevealNudgeHostProps {
+export interface OverlayManagerProps {
   /** Current nudge decision to render, or null if no active nudge */
   decision: NudgeDecision | null;
 
@@ -45,8 +45,8 @@ export interface RevealNudgeHostProps {
  * Main host component that renders the appropriate nudge template
  * based on the current NudgeDecision.
  */
-export const RevealNudgeHost = memo(function RevealNudgeHost(
-  props: RevealNudgeHostProps
+export const OverlayManager = memo(function OverlayManager(
+  props: OverlayManagerProps
 ): React.ReactElement | null {
   const { decision, onDismiss, onActionClick, onTrack } = props;
 
@@ -108,7 +108,7 @@ export const RevealNudgeHost = memo(function RevealNudgeHost(
       // TODO: Implement SpotlightNudge
       if (process.env.NODE_ENV !== "production") {
         console.warn(
-          "[RevealNudgeHost] SpotlightNudge not yet implemented"
+          "[OverlayManager] SpotlightNudge not yet implemented"
         );
       }
       return null;
@@ -117,7 +117,7 @@ export const RevealNudgeHost = memo(function RevealNudgeHost(
       // TODO: Implement BannerNudge
       if (process.env.NODE_ENV !== "production") {
         console.warn(
-          "[RevealNudgeHost] BannerNudge not yet implemented"
+          "[OverlayManager] BannerNudge not yet implemented"
         );
       }
       return null;
@@ -126,7 +126,7 @@ export const RevealNudgeHost = memo(function RevealNudgeHost(
       // TODO: Implement InlineHint
       if (process.env.NODE_ENV !== "production") {
         console.warn(
-          "[RevealNudgeHost] InlineHint not yet implemented"
+          "[OverlayManager] InlineHint not yet implemented"
         );
       }
       return null;
@@ -135,7 +135,7 @@ export const RevealNudgeHost = memo(function RevealNudgeHost(
       // TODO: Implement ModalNudge
       if (process.env.NODE_ENV !== "production") {
         console.warn(
-          "[RevealNudgeHost] ModalNudge not yet implemented"
+          "[OverlayManager] ModalNudge not yet implemented"
         );
       }
       return null;
@@ -145,7 +145,7 @@ export const RevealNudgeHost = memo(function RevealNudgeHost(
       // Optionally log in dev, but don't throw
       if (process.env.NODE_ENV !== "production") {
         console.warn(
-          "[RevealNudgeHost] Unknown templateId:",
+          "[OverlayManager] Unknown templateId:",
           decision.templateId
         );
       }

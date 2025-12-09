@@ -1,10 +1,10 @@
 /**
- * RevealNudgeHost Component Tests
+ * OverlayManager Component Tests
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { RevealNudgeHost } from '../../components/RevealNudgeHost';
+import { OverlayManager } from '../../components/OverlayManager';
 import type { NudgeDecision } from '../../types/NudgeDecision';
 
 // Mock the hooks
@@ -49,7 +49,7 @@ vi.mock('../../components/templates/TooltipNudge', () => ({
   ),
 }));
 
-describe('RevealNudgeHost', () => {
+describe('OverlayManager', () => {
   const mockOnDismiss = vi.fn();
   const mockOnActionClick = vi.fn();
   const mockOnTrack = vi.fn();
@@ -81,7 +81,7 @@ describe('RevealNudgeHost', () => {
 
   it('renders nothing when decision is null', () => {
     const { container } = render(
-      <RevealNudgeHost decision={null} />
+      <OverlayManager decision={null} />
     );
 
     expect(container.firstChild).toBeNull();
@@ -94,7 +94,7 @@ describe('RevealNudgeHost', () => {
     });
 
     render(
-      <RevealNudgeHost
+      <OverlayManager
         decision={decision}
         onDismiss={mockOnDismiss}
       />
@@ -115,7 +115,7 @@ describe('RevealNudgeHost', () => {
     });
 
     const { container } = render(
-      <RevealNudgeHost decision={decision} />
+      <OverlayManager decision={decision} />
     );
 
     expect(container.firstChild).toBeNull();
@@ -133,11 +133,11 @@ describe('RevealNudgeHost', () => {
     });
 
     render(
-      <RevealNudgeHost decision={decision} />
+      <OverlayManager decision={decision} />
     );
 
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[RevealNudgeHost] Unknown templateId:'),
+      expect.stringContaining('[OverlayManager] Unknown templateId:'),
       'unknown-template'
     );
 
@@ -148,7 +148,7 @@ describe('RevealNudgeHost', () => {
     const decision = createMockDecision();
 
     render(
-      <RevealNudgeHost
+      <OverlayManager
         decision={decision}
         onDismiss={mockOnDismiss}
       />
@@ -166,7 +166,7 @@ describe('RevealNudgeHost', () => {
     });
 
     render(
-      <RevealNudgeHost
+      <OverlayManager
         decision={decision}
         onActionClick={mockOnActionClick}
       />
@@ -188,7 +188,7 @@ describe('RevealNudgeHost', () => {
     const decision = createMockDecision();
 
     const { container } = render(
-      <RevealNudgeHost decision={decision} />
+      <OverlayManager decision={decision} />
     );
 
     // Should not render when not visible
@@ -208,7 +208,7 @@ describe('RevealNudgeHost', () => {
     });
 
     render(
-      <RevealNudgeHost decision={decision} />
+      <OverlayManager decision={decision} />
     );
 
     expect(mockUseTargetRect).toHaveBeenCalledWith('test-target');
@@ -222,7 +222,7 @@ describe('RevealNudgeHost', () => {
     });
 
     render(
-      <RevealNudgeHost
+      <OverlayManager
         decision={decision}
         onDismiss={mockOnDismiss}
         onActionClick={mockOnActionClick}
@@ -242,7 +242,7 @@ describe('RevealNudgeHost', () => {
     });
 
     render(
-      <RevealNudgeHost decision={decision} />
+      <OverlayManager decision={decision} />
     );
 
     expect(mockUseTargetRect).toHaveBeenCalledWith(null);
@@ -254,7 +254,7 @@ describe('RevealNudgeHost', () => {
     const decision = createMockDecision();
 
     render(
-      <RevealNudgeHost
+      <OverlayManager
         decision={decision}
         onTrack={mockOnTrack}
       />

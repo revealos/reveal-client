@@ -58,7 +58,7 @@ Here's how the SDK works at runtime:
                        └─> Host app receives decision via:
                            ├─> Reveal.onNudgeDecision(callback) [framework-agnostic]
                            └─> useNudgeDecision() hook [React only]
-                               └─> RevealNudgeHost renders nudge [optional React UI]
+                               └─> OverlayManager renders nudge [optional React UI]
 
 3. Event Tracking
    └─> Reveal.track(eventKind, eventType, properties?)
@@ -96,7 +96,7 @@ Here's how the SDK works at runtime:
 - Optional UI layer
 - Renders nudge templates
 - Consumes decisions from SDK
-- Provides `RevealNudgeHost` component
+- Provides `OverlayManager` component
 - Provides `useNudgeDecision` hook (re-exported from SDK)
 
 **Integration Pattern:**
@@ -107,6 +107,6 @@ await Reveal.init('client-key');
 
 // Overlay UI (optional, React only)
 import { useNudgeDecision } from '@reveal/client'; // or '@reveal/overlay-react'
-import { RevealNudgeHost } from '@reveal/overlay-react';
+import { OverlayManager } from '@reveal/overlay-react';
 ```
 

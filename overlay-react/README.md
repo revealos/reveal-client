@@ -1,75 +1,62 @@
 # @reveal/overlay-react
 
-React-based nudges library for rendering nudges in React applications.
+React components for rendering contextual nudges.
 
 ## Overview
 
-This package provides React components for rendering nudges based on decisions from the Reveal SDK. It is a **React-only library** - no DOM helper APIs are provided.
+This package provides React components for rendering nudges based on decisions from the Reveal SDK. For complete documentation, installation instructions, and quick start guide, see the [main README](../README.md).
 
-## Installation
+## Package-Specific Details
+
+### Installation
 
 ```bash
-pnpm add @reveal/overlay-react
+npm install @reveal/overlay-react
 ```
 
-## Usage
+### Core Exports
+
+- `OverlayManager` - Main component that renders nudge templates
+- `OverlayManagerProps` - Props interface for OverlayManager
+
+### Usage
 
 ```tsx
-import { RevealNudgeHost } from '@reveal/overlay-react';
-import { mapWireToUI } from '@reveal/overlay-react';
+import { OverlayManager } from '@reveal/overlay-react';
+import { useNudgeDecision } from '@reveal/client';
 
-// In your component
 function App() {
-  const [nudgeDecision, setNudgeDecision] = useState(null);
-
-  // Subscribe to SDK nudge decisions
-  useEffect(() => {
-    const unsubscribe = Reveal.onNudgeDecision((wireDecision) => {
-      const uiDecision = mapWireToUI(wireDecision);
-      setNudgeDecision(uiDecision);
-    });
-
-    return unsubscribe;
-  }, []);
+  const { decision, handlers } = useNudgeDecision();
 
   return (
-    <RevealNudgeHost
-      decision={nudgeDecision}
-      onDismiss={(id) => {
-        Reveal.track('nudge', 'nudge_dismissed', { nudgeId: id });
-        setNudgeDecision(null);
-      }}
-      onActionClick={(id) => {
-        Reveal.track('nudge', 'nudge_clicked', { nudgeId: id });
-        setNudgeDecision(null);
-      }}
-    />
+    <>
+      {/* Your app */}
+      <OverlayManager 
+        decision={decision} 
+        onDismiss={handlers.onDismiss}
+        onActionClick={handlers.onActionClick}
+        onTrack={handlers.onTrack}
+      />
+    </>
   );
 }
 ```
 
-## Components
+### Templates
 
-- **RevealNudgeHost** - Main host component that renders the appropriate nudge template
-- **Templates** - SpotlightNudge, BannerNudge, TooltipNudge, InlineHint, ModalNudge
-- **Primitives** - Overlay, NudgeCard, NudgeCTAButton, ElementGlow
+The `OverlayManager` automatically renders the appropriate template based on the decision:
+- `tooltip` - TooltipNudge
+- `banner` - BannerNudge
+- `modal` - ModalNudge
+- `spotlight` - SpotlightNudge
+- `inline_hint` - InlineHint
 
-## Types
+## Documentation
 
-- `WireNudgeDecision` - Wire-level decision from SDK/backend
-- `UINudgeDecision` - UI-facing decision (mapped from wire)
-- `NudgeDecision` - Alias for UINudgeDecision
-- `mapWireToUI()` - Function to map wire decision to UI decision
+- **Main README** → [../README.md](../README.md)
+- **API Reference** → [../docs/API.md](../docs/API.md)
+- **Overlay Security** → [../docs/OVERLAY_SECURITY.md](../docs/OVERLAY_SECURITY.md)
 
-**Note:** `mapWireToUI` and `UINudgeDecision` are also available from `@reveal/client` for use in React hooks. Overlay-react keeps its own copy to maintain independence, but both implementations are identical.
+## License
 
-## Development
-
-```bash
-# Build
-pnpm build
-
-# Test
-pnpm test
-```
-
+MIT

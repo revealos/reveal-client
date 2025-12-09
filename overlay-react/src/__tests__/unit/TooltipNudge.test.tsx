@@ -9,7 +9,7 @@ import type { UINudgeDecision } from '../../types/NudgeDecision';
 
 // Mock the hooks
 // Note: useTrackNudgeShown is no longer used in TooltipNudge
-// It's handled by RevealNudgeHost instead
+// It's handled by OverlayManager instead
 
 vi.mock('../../hooks/useKeyboardDismiss', () => ({
   useKeyboardDismiss: vi.fn(),
@@ -226,7 +226,7 @@ describe('TooltipNudge', () => {
 
   it('renders tooltip with onTrack callback available', async () => {
     // Note: useTrackNudgeShown is no longer called in TooltipNudge
-    // Tracking is handled by RevealNudgeHost instead
+    // Tracking is handled by OverlayManager instead
     const decision = createMockDecision({ 
       body: 'Test body',
       targetId: 'test-target',
@@ -246,7 +246,7 @@ describe('TooltipNudge', () => {
     });
 
     // Verify tooltip renders correctly
-    // Tracking is handled by RevealNudgeHost, not TooltipNudge
+    // Tracking is handled by OverlayManager, not TooltipNudge
     expect(screen.getByText('Test body')).toBeInTheDocument();
   });
 

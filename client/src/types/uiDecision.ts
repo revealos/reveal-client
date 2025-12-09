@@ -90,7 +90,7 @@ export interface UINudgeDecision {
  * ```ts
  * const wireDecision = await Reveal.onNudgeDecision(...);
  * const uiDecision = mapWireToUI(wireDecision);
- * // Use uiDecision with RevealNudgeHost or other UI components
+ * // Use uiDecision with OverlayManager or other UI components
  * ```
  */
 export function mapWireToUI(

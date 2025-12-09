@@ -95,7 +95,7 @@ Use the `useNudgeDecision` hook for the simplest integration:
 
 ```typescript
 import { useNudgeDecision } from '@reveal/client';
-import { RevealNudgeHost } from '@reveal/overlay-react';
+import { OverlayManager } from '@reveal/overlay-react';
 
 function App() {
   const { decision, handlers } = useNudgeDecision();
@@ -103,7 +103,7 @@ function App() {
   return (
     <>
       {/* Your app content */}
-      <RevealNudgeHost 
+      <OverlayManager 
         decision={decision} 
         onDismiss={handlers.onDismiss}
         onActionClick={handlers.onActionClick}
@@ -187,7 +187,7 @@ unsubscribe();
 
 **Requirements:** 
 - React >= 18.0.0 (peer dependency)
-- `@reveal/overlay-react` package (for `RevealNudgeHost` component)
+- `@reveal/overlay-react` package (for `OverlayManager` component)
 
 **Returns:** Object with:
 - `decision` (`UINudgeDecision | null`) - Current nudge decision in UI format (automatically converted from wire format)
@@ -205,7 +205,7 @@ unsubscribe();
 **Example:**
 ```typescript
 import { useNudgeDecision } from '@reveal/client';
-import { RevealNudgeHost } from '@reveal/overlay-react';
+import { OverlayManager } from '@reveal/overlay-react';
 
 function App() {
   const { decision, handlers } = useNudgeDecision();
@@ -213,7 +213,7 @@ function App() {
   return (
     <>
       {/* Your app content */}
-      <RevealNudgeHost 
+      <OverlayManager 
         decision={decision} 
         {...handlers} 
       />
@@ -240,13 +240,13 @@ Understanding the naming conventions helps when working with nudges:
 - **NudgeDecision** - Type alias for `UINudgeDecision` (the UI-facing type you'll use)
 - **Template** - Pre-built nudge UI component (tooltip, modal, banner, spotlight, inline_hint)
 - **TemplateId** - Identifier for template type: `"tooltip" | "modal" | "banner" | "spotlight" | "inline_hint"`
-- **RevealNudgeHost** - React component that renders the appropriate template based on decision
+- **OverlayManager** - React component that renders the appropriate template based on decision
 - **useNudgeDecision** - React hook that manages nudge subscription and provides UI-ready state
 
 **Flow:**
 1. Backend sends `WireNudgeDecision` → SDK receives it
 2. SDK converts to `UINudgeDecision` (via `mapWireToUI`) → UI-ready format
-3. `RevealNudgeHost` renders appropriate template → User sees nudge
+3. `OverlayManager` renders appropriate template → User sees nudge
 
 ### Nudge Types
 
