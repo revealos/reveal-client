@@ -43,10 +43,10 @@ describe('auditLogger', () => {
   });
 
   describe('logAuditEvent', () => {
-    it('should log low severity events as info', () => {
+    it('should log low severity events as debug', () => {
       const event = createAuditEvent('data_access', 'low', 'Test message');
       logAuditEvent(event);
-      expect(mockLogger.logInfo).toHaveBeenCalledWith(
+      expect(mockLogger.logDebug).toHaveBeenCalledWith(
         '[AUDIT] DATA_ACCESS: Test message',
         expect.objectContaining({
           severity: 'low',
@@ -95,10 +95,10 @@ describe('auditLogger', () => {
 
     it('should handle logger errors gracefully', () => {
       const throwingLogger: Logger = {
-        logDebug: vi.fn(),
-        logInfo: vi.fn(() => {
+        logDebug: vi.fn(() => {
           throw new Error('Logger error');
         }),
+        logInfo: vi.fn(),
         logWarn: vi.fn(),
         logError: vi.fn(),
       };

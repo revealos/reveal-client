@@ -32,7 +32,7 @@ The AI prompt below can be copy-pasted directly into your security auditing work
 
 ## AI Audit Prompt
 
-**Copy this prompt into your AI security auditing tool:**
+**Copy this prompt into your AI security auditing tool (i.e cursor or claude) alongside your codebase and this github repo:**
 
 ```
 You are an AI security auditor. You are evaluating the Reveal SDK + overlay repository to determine whether it is safe to integrate into your production application.
