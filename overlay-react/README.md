@@ -55,7 +55,6 @@ The `OverlayManager` automatically renders the appropriate template based on the
 
 - **Main README** → [../README.md](../README.md)
 - **API Reference** → [../docs/API.md](../docs/API.md)
-- **Overlay Security** → [../docs/OVERLAY_SECURITY.md](../docs/OVERLAY_SECURITY.md)
 
 ## License
 
