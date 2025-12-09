@@ -25,11 +25,11 @@ The Overlay has one responsibility:
 flowchart TD
     A[User Browser] 
     --> B[Reveal SDK]
-    B -->|Event Payload (JSON)| C[Transport Layer (Single File)]
+    B -->|Event Payload| C[Transport Layer]
     C -->|HTTPS POST /ingest| D[Reveal Backend - Ingest Service]
     D --> E[Event Processor]
     E --> F[(Decision Engine)]
-    F -->|Nudge Decision (JSON)| G[Overlay Manager]
+    F -->|Nudge Decision| G[Overlay Manager]
     G --> H[Rendered Nudge UI]
 ```
 
