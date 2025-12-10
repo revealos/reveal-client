@@ -10,40 +10,39 @@ Reveal overlays use a **quadrant-based positioning strategy** to ensure nudges a
 
 ### Quadrant Options
 
-Overlays can be positioned in one of four viewport quadrants:
+Overlays can be positioned in one of six viewport quadrants:
 
-- **`top-left`** - Top-left corner of the viewport
-- **`top-right`** - Top-right corner of the viewport
-- **`bottom-left`** - Bottom-left corner of the viewport
-- **`bottom-right`** - Bottom-right corner of the viewport
-- **`auto`** - SDK automatically selects the quadrant with the most available space
+- **`topLeft`** - Top-left corner of the viewport
+- **`topCenter`** - Top center of the viewport (default)
+- **`topRight`** - Top-right corner of the viewport
+- **`bottomLeft`** - Bottom-left corner of the viewport
+- **`bottomCenter`** - Bottom center of the viewport
+- **`bottomRight`** - Bottom-right corner of the viewport
 
 ### How Quadrants Are Determined
 
-**Backend-Specified (Recommended):**
+**Backend-Specified:**
 - Backend can explicitly specify a quadrant in the `WireNudgeDecision`:
   ```typescript
   {
     nudgeId: "nudge_123",
     templateId: "tooltip",
     title: "Try this feature",
-    quadrant: "top-right"  // Explicit quadrant preference
+    quadrant: "topCenter"  // Explicit quadrant preference
   }
   ```
 
-**Auto-Detection (Fallback):**
-- When `quadrant` is `"auto"` or not provided, the SDK automatically:
-  1. Calculates available space in each quadrant
-  2. Considers viewport boundaries and other UI elements
-  3. Selects the quadrant with the most available space
-  4. Falls back to `top-right` if no clear winner
+**Default Behavior:**
+- When `quadrant` is not provided, the overlay defaults to `"topCenter"`.
+- The default ensures consistent, predictable placement without requiring backend configuration.
 
 ### Benefits of Quadrant-Based Positioning
 
-1. **Prevents UI Blocking**: Overlays won't cover critical UI elements (buttons, forms, navigation)
+1. **Prevents UI Blocking**: Overlays positioned in fixed quadrants avoid covering critical UI elements (buttons, forms, navigation)
 2. **Consistent Placement**: Users can predict where nudges will appear
-3. **Flexible**: Backend can control placement or let SDK optimize
+3. **Flexible**: Backend can control placement via `quadrant` field
 4. **Viewport-Aware**: Automatically adapts to different screen sizes and orientations
+5. **No DOM Dependencies**: No need for target elements to exist in the DOM
 
 ### Migration from Target Element Positioning
 
@@ -64,12 +63,12 @@ Overlays can be positioned in one of four viewport quadrants:
 Different templates may use quadrants differently:
 
 ### Tooltip
-- Positions in specified quadrant
-- Can still reference a target element for context (if `targetId` provided)
-- Arrow/connector may point to target element if available
+- Positions in specified quadrant (defaults to `topCenter`)
+- Fixed positioning based on viewport dimensions and tooltip size
+- No target element attachment or arrows
 
 ### Banner
-- Typically uses `top-left` or `top-right` quadrants
+- Typically uses `topLeft`, `topCenter`, or `topRight` quadrants
 - Full-width banners may span across top or bottom of viewport
 
 ### Modal
@@ -77,8 +76,8 @@ Different templates may use quadrants differently:
 - Uses overlay/backdrop pattern
 
 ### Spotlight
-- Highlights target element with overlay
 - Uses quadrant for positioning callout/annotation
+- May highlight elements but positioning is quadrant-based
 
 ### Inline Hint
 - Positions inline with content (not quadrant-based)
@@ -95,7 +94,7 @@ Different templates may use quadrants differently:
 
 **Responsive Behavior:**
 - Automatically adjusts on viewport resize
-- Recalculates position on scroll (if target element provided)
+- Recalculates position based on viewport dimensions and tooltip size
 - Handles mobile/desktop viewport differences
 
 **No-Go Zones:**
@@ -106,11 +105,10 @@ Different templates may use quadrants differently:
 
 ## Configuration
 
-Quadrant preference can be set:
+Quadrant preference is set via:
 
-1. **Backend Decision** (Primary): `WireNudgeDecision.quadrant`
-2. **SDK Config** (Fallback): `Reveal.init({ defaultQuadrant: 'top-right' })`
-3. **Auto-Detection** (Default): SDK selects best quadrant automatically
+1. **Backend Decision**: `WireNudgeDecision.quadrant` field
+2. **Default**: If not specified, defaults to `"topCenter"`
 
 ---
 
@@ -123,24 +121,24 @@ Quadrant preference can be set:
   "templateId": "tooltip",
   "title": "New feature available",
   "body": "Check out our latest update",
-  "quadrant": "top-right"
+  "quadrant": "topCenter"
 }
 ```
 
-**Auto-detection (no quadrant specified):**
+**Default behavior (no quadrant specified):**
 ```json
 {
   "nudgeId": "nudge_456",
   "templateId": "banner",
   "title": "Welcome back!",
   "body": "Here's what's new"
-  // quadrant not specified → SDK auto-detects
+  // quadrant not specified → defaults to "topCenter"
 }
 ```
 
 ---
 
 For technical implementation details, see:
-- `packages/overlay-react/src/layout/computeQuadrantPosition.ts` (when implemented)
+- `packages/overlay-react/src/layout/computeQuadrantPosition.ts`
 - `packages/overlay-react/src/components/OverlayManager.tsx`
 

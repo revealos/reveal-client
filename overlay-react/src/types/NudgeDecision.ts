@@ -13,7 +13,8 @@ export interface WireNudgeDecision {
   title?: string;
   body?: string;
   ctaText?: string;
-  slotId?: string;
+  slotId?: string; // Deprecated: kept for backward compatibility
+  quadrant?: NudgeQuadrant; // Viewport quadrant for positioning (defaults to "topCenter")
   frictionType?: "stall" | "rageclick" | "backtrack";
   expiresAt?: string; // ISO string
   extra?: Record<string, string | number | boolean | null>;
@@ -29,6 +30,17 @@ export type NudgeTemplateId =
 
 // Optional severity to vary styling
 export type NudgeSeverity = "info" | "success" | "warning" | "danger";
+
+/**
+ * Quadrant positioning options for overlays
+ */
+export type NudgeQuadrant =
+  | "topLeft"
+  | "topCenter"
+  | "topRight"
+  | "bottomLeft"
+  | "bottomCenter"
+  | "bottomRight";
 
 /**
  * UI-facing nudge decision.
@@ -56,10 +68,15 @@ export interface UINudgeDecision {
 
   /**
    * Optional DOM target identifier.
-   * Typically corresponds to an element ID in the host app that this nudge
-   * should attach to or highlight.
+   * Deprecated: kept for backward compatibility but no longer used for positioning.
    */
   targetId?: string | null;
+
+  /**
+   * Viewport quadrant for positioning the nudge.
+   * Defaults to "topCenter" if not specified.
+   */
+  quadrant?: NudgeQuadrant;
 
   /**
    * Whether the user is allowed to dismiss this nudge manually.
@@ -101,6 +118,7 @@ export function mapWireToUI(
   options?: {
     severity?: NudgeSeverity;
     targetId?: string | null;
+    quadrant?: NudgeQuadrant;
     dismissible?: boolean;
     autoDismissMs?: number | null;
   }
@@ -113,6 +131,7 @@ export function mapWireToUI(
     ctaText: wire.ctaText,
     severity: options?.severity,
     targetId: options?.targetId ?? wire.slotId ?? null,
+    quadrant: options?.quadrant ?? wire.quadrant ?? "topCenter",
     dismissible: options?.dismissible ?? true,
     autoDismissMs: options?.autoDismissMs ?? null,
     extra: wire.extra,

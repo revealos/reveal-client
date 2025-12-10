@@ -20,16 +20,10 @@ const mockUseNudgeVisibility = vi.fn((args: any) => {
   };
 });
 
-const mockUseTargetRect = vi.fn(() => null);
-
 const mockUseTrackNudgeShown = vi.fn();
 
 vi.mock('../../hooks/useNudgeVisibility', () => ({
   useNudgeVisibility: (...args: any[]) => mockUseNudgeVisibility(...args),
-}));
-
-vi.mock('../../hooks/useTargetRect', () => ({
-  useTargetRect: (...args: any[]) => mockUseTargetRect(...args),
 }));
 
 vi.mock('../../hooks/useTrackNudgeShown', () => ({
@@ -68,7 +62,6 @@ describe('OverlayManager', () => {
         handleManualDismiss,
       };
     });
-    mockUseTargetRect.mockReturnValue(null);
     mockUseTrackNudgeShown.mockClear();
   });
 
@@ -199,19 +192,17 @@ describe('OverlayManager', () => {
     });
   });
 
-  it('uses useTargetRect to get target rect', () => {
-    const mockRect = new DOMRect(100, 200, 50, 30);
-    mockUseTargetRect.mockReturnValue(mockRect);
-
+  it('renders tooltip with quadrant positioning (no target element needed)', () => {
     const decision = createMockDecision({
-      targetId: 'test-target',
+      quadrant: 'topCenter',
     });
 
     render(
       <OverlayManager decision={decision} />
     );
 
-    expect(mockUseTargetRect).toHaveBeenCalledWith('test-target');
+    // Should render tooltip regardless of targetId
+    expect(screen.getByTestId('tooltip-nudge')).toBeInTheDocument();
   });
 
   it('passes correct props to TooltipNudge', () => {
@@ -234,19 +225,16 @@ describe('OverlayManager', () => {
     expect(screen.getByText('Test body')).toBeInTheDocument();
   });
 
-  it('handles null targetId gracefully', () => {
-    mockUseTargetRect.mockReturnValue(null);
-
+  it('defaults to topCenter quadrant when quadrant not specified', () => {
     const decision = createMockDecision({
-      targetId: null,
+      // quadrant not specified
     });
 
     render(
       <OverlayManager decision={decision} />
     );
 
-    expect(mockUseTargetRect).toHaveBeenCalledWith(null);
-    // Should still render (TooltipNudge handles null targetId)
+    // Should still render with default topCenter positioning
     expect(screen.getByTestId('tooltip-nudge')).toBeInTheDocument();
   });
 

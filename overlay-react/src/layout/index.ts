@@ -7,6 +7,7 @@
  */
 
 export { computeTooltipPosition } from './computeTooltipPosition';
+export { computeQuadrantPosition } from './computeQuadrantPosition';
 // TODO: Export computeSpotlightPosition when implemented
 // export { computeSpotlightPosition } from './computeSpotlightPosition';
 

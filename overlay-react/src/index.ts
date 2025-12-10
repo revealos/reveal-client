@@ -25,6 +25,7 @@ export type {
   NudgeDecision,
   NudgeTemplateId,
   NudgeSeverity,
+  NudgeQuadrant,
 } from "./types/NudgeDecision";
 
 export { mapWireToUI } from "./types/NudgeDecision";

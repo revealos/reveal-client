@@ -21,44 +21,32 @@ describe('TooltipNudge', () => {
   const mockOnTrack = vi.fn();
 
   beforeEach(() => {
-    // Create a target element in the DOM
-    const targetElement = document.createElement('div');
-    targetElement.id = 'test-target';
-    targetElement.textContent = 'Target Element';
-    // Set position and size so getBoundingClientRect works
-    targetElement.style.position = 'absolute';
-    targetElement.style.top = '100px';
-    targetElement.style.left = '200px';
-    targetElement.style.width = '100px';
-    targetElement.style.height = '50px';
-    document.body.appendChild(targetElement);
-
-    // Mock window.scrollY and scrollX for consistent positioning
-    Object.defineProperty(window, 'scrollY', { value: 0, writable: true });
-    Object.defineProperty(window, 'scrollX', { value: 0, writable: true });
+    // Mock window dimensions for quadrant positioning
+    Object.defineProperty(window, 'innerWidth', { 
+      value: 1024, 
+      writable: true, 
+      configurable: true 
+    });
+    Object.defineProperty(window, 'innerHeight', { 
+      value: 768, 
+      writable: true, 
+      configurable: true 
+    });
 
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    // Clean up DOM
-    const target = document.getElementById('test-target');
-    if (target) {
-      document.body.removeChild(target);
-    }
   });
 
   const createMockDecision = (overrides?: Partial<UINudgeDecision>): UINudgeDecision => ({
     id: 'test-nudge-1',
     templateId: 'tooltip',
     body: 'Test body text',
+    quadrant: 'topCenter', // Default quadrant
     ...overrides,
   });
 
   it('renders with UINudgeDecision containing body', async () => {
     const decision = createMockDecision({ 
       body: 'Test body',
-      targetId: 'test-target',
     });
     
     render(
@@ -78,7 +66,6 @@ describe('TooltipNudge', () => {
     const decision = createMockDecision({
       title: 'Test Title',
       body: 'Test body',
-      targetId: 'test-target',
     });
     
     render(
@@ -99,7 +86,6 @@ describe('TooltipNudge', () => {
     const decision = createMockDecision({
       body: 'Test body',
       ctaText: 'Click me',
-      targetId: 'test-target',
     });
     
     render(
@@ -121,7 +107,6 @@ describe('TooltipNudge', () => {
     const decision = createMockDecision({
       body: 'Test body',
       ctaText: 'Click me',
-      targetId: 'test-target',
     });
     
     render(
@@ -144,7 +129,6 @@ describe('TooltipNudge', () => {
   it('calls onDismiss when "Got it" button clicked', async () => {
     const decision = createMockDecision({ 
       body: 'Test body',
-      targetId: 'test-target',
     });
     
     render(
@@ -179,49 +163,59 @@ describe('TooltipNudge', () => {
     expect(screen.queryByText('Got it')).not.toBeInTheDocument();
   });
 
-  it('handles missing targetId gracefully', () => {
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('renders tooltip in topCenter by default when quadrant not specified', async () => {
     const decision = createMockDecision({
       body: 'Test body',
-      targetId: null,
+      quadrant: undefined, // No quadrant specified
     });
     
-    const { container } = render(
+    render(
       <TooltipNudge
         decision={decision}
         onDismiss={mockOnDismiss}
       />
     );
 
-    // Should not crash, but may not render tooltip without target
-    expect(container.firstChild).toBeNull();
+    // Should render tooltip in default topCenter position
+    await waitFor(() => {
+      expect(screen.getByText('Test body')).toBeInTheDocument();
+    });
     
-    consoleSpy.mockRestore();
+    const tooltip = screen.getByRole('tooltip');
+    expect(tooltip).toBeInTheDocument();
+    // Should have positioning styles (top and left from inline styles)
+    expect(tooltip).toHaveStyle({ top: '16px' });
+    // Should have left style set (exact value depends on viewport width)
+    const leftStyle = tooltip.getAttribute('style');
+    expect(leftStyle).toContain('left:');
+    // Should have fixed positioning class
+    expect(tooltip).toHaveClass('fixed');
   });
 
-  it('handles target element not found (warns, does not crash)', () => {
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('positions tooltip in specified quadrant', async () => {
     const decision = createMockDecision({
       body: 'Test body',
-      targetId: 'non-existent-target',
+      quadrant: 'topRight',
     });
     
-    const { container } = render(
+    render(
       <TooltipNudge
         decision={decision}
         onDismiss={mockOnDismiss}
       />
     );
 
-    // Should warn but not crash
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[TooltipNudge] Target element not found')
-    );
-    
-    // Should not render tooltip
-    expect(container.firstChild).toBeNull();
-    
-    consoleSpy.mockRestore();
+    await waitFor(() => {
+      const tooltip = screen.getByRole('tooltip');
+      expect(tooltip).toBeInTheDocument();
+      // Should be positioned (top and left styles set)
+      expect(tooltip).toHaveStyle({ top: '16px' });
+      // Should have left style set (exact value depends on viewport width and quadrant)
+      const leftStyle = tooltip.getAttribute('style');
+      expect(leftStyle).toContain('left:');
+      // Should have fixed positioning class
+      expect(tooltip).toHaveClass('fixed');
+    });
   });
 
   it('renders tooltip with onTrack callback available', async () => {
@@ -229,7 +223,6 @@ describe('TooltipNudge', () => {
     // Tracking is handled by OverlayManager instead
     const decision = createMockDecision({ 
       body: 'Test body',
-      targetId: 'test-target',
     });
     
     render(
@@ -254,7 +247,6 @@ describe('TooltipNudge', () => {
     const decision = createMockDecision({
       body: 'Test body only',
       title: undefined,
-      targetId: 'test-target',
     });
     
     render(
@@ -275,7 +267,6 @@ describe('TooltipNudge', () => {
   it('does not render a backdrop overlay (tooltip is non-blocking)', async () => {
     const decision = createMockDecision({ 
       body: 'Test body',
-      targetId: 'test-target',
     });
     
     render(

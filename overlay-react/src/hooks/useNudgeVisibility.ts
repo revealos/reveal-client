@@ -32,16 +32,27 @@ export function useNudgeVisibility({
   decision,
   onDismiss,
 }: UseNudgeVisibilityArgs): UseNudgeVisibilityResult {
+  // ✅ ALL HOOKS MUST BE CALLED UNCONDITIONALLY (Rules of Hooks)
   const [isVisible, setIsVisible] = useState<boolean>(true);
   const timeoutRef = useRef<number | null>(null);
+
+  // Stabilize decision.id to avoid hook dependency issues
+  const decisionId = decision?.id ?? null;
+  const autoDismissMs = decision?.autoDismissMs ?? null;
 
   // Handle manual dismiss (only if decision exists)
   const handleManualDismiss = useCallback(() => {
     setIsVisible(false);
-    if (onDismiss && decision) {
-      onDismiss(decision.id);
+    if (onDismiss && decisionId) {
+      onDismiss(decisionId);
     }
-  }, [decision?.id, onDismiss]);
+  }, [decisionId, onDismiss]);
+
+  // Reset visibility when decision changes (new decision = visible again, null = hidden)
+  // This must be called BEFORE the auto-dismiss effect to maintain hook order
+  useEffect(() => {
+    setIsVisible(decisionId !== null);
+  }, [decisionId]);
 
   // Auto-dismiss logic (only if decision exists)
   useEffect(() => {
@@ -52,20 +63,20 @@ export function useNudgeVisibility({
     }
 
     // If no decision, hide immediately
-    if (!decision) {
+    if (!decisionId) {
       setIsVisible(false);
       return;
     }
 
     // If autoDismissMs is set and nudge is visible, set up auto-dismiss
-    if (decision.autoDismissMs && decision.autoDismissMs > 0 && isVisible) {
+    if (autoDismissMs && autoDismissMs > 0 && isVisible) {
       timeoutRef.current = window.setTimeout(() => {
         setIsVisible(false);
-        if (onDismiss) {
-          onDismiss(decision.id);
+        if (onDismiss && decisionId) {
+          onDismiss(decisionId);
         }
         timeoutRef.current = null;
-      }, decision.autoDismissMs);
+      }, autoDismissMs);
     }
 
     // Cleanup on unmount or when decision/visibility changes
@@ -75,12 +86,7 @@ export function useNudgeVisibility({
         timeoutRef.current = null;
       }
     };
-  }, [decision?.autoDismissMs, decision?.id, isVisible, onDismiss]);
-
-  // Reset visibility when decision changes (new decision = visible again, null = hidden)
-  useEffect(() => {
-    setIsVisible(decision !== null);
-  }, [decision?.id]);
+  }, [autoDismissMs, decisionId, isVisible, onDismiss]);
 
   return {
     isVisible: decision ? isVisible : false,

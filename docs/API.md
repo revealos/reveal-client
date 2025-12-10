@@ -242,9 +242,10 @@ Understanding the naming conventions helps when working with nudges:
 - **TemplateId** - Identifier for template type: `"tooltip" | "modal" | "banner" | "spotlight" | "inline_hint"`
 - **OverlayManager** - React component that renders the appropriate template based on decision
 - **useNudgeDecision** - React hook that manages nudge subscription and provides UI-ready state
-- **Quadrant Positioning** - Overlay positioning strategy using viewport quadrants (top-left, top-right, bottom-left, bottom-right)
+- **Quadrant Positioning** - Overlay positioning strategy using 6 viewport quadrants (topLeft, topCenter, topRight, bottomLeft, bottomCenter, bottomRight)
   - Replaces target element attachment approach for better flexibility
-  - Backend can specify quadrant preference or SDK can auto-detect best quadrant based on available space
+  - Backend can specify quadrant preference via `WireNudgeDecision.quadrant` field
+  - Defaults to `"topCenter"` if not specified
   - Prevents overlays from blocking critical UI elements
 
 **Flow:**

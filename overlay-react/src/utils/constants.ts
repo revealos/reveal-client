@@ -28,6 +28,18 @@ export const NUDGE_SEVERITY = {
 } as const;
 
 /**
+ * Quadrant positioning constants
+ */
+export const QUADRANTS = {
+  TOP_LEFT: "topLeft",
+  TOP_CENTER: "topCenter",
+  TOP_RIGHT: "topRight",
+  BOTTOM_LEFT: "bottomLeft",
+  BOTTOM_CENTER: "bottomCenter",
+  BOTTOM_RIGHT: "bottomRight",
+} as const;
+
+/**
  * Z-index constants for overlay layering
  * 
  * These values ensure overlays render above host app content while
