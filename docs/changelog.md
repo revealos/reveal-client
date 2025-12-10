@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Glassmorphic Tooltip Design**: Modern glassmorphic styling for tooltip nudges
+  - Translucent dark background with backdrop blur for depth
+  - Subtle borders and shadows for polished appearance
+  - Responsive width (85% of original, clamped between 238px and 408px)
+  - Automatic style injection via `injectRevealGlassPanelStyles()` utility
+  - Styles are automatically loaded without requiring manual imports in consuming applications
+- **Arrow Bubble Indicator**: Visual indicator for tooltip positioning
+  - Glassmorphic circular bubble (56px) with arrow icon (24px)
+  - Appears above tooltip for bottom quadrants (pointing up) or below tooltip for top quadrants (pointing down)
+  - Always centered horizontally on the tooltip regardless of quadrant
+  - Features floating animation (12px vertical displacement) for visual interest
+  - 24px spacing between tooltip and arrow bubble
 - **SDK Safety Hardening**: Comprehensive error handling and crash prevention
   - Detector initialization wrapped in `safeTry` to prevent `Reveal.init()` crashes
   - All detector event listeners wrapped in try-catch blocks to prevent crashes from unexpected errors
@@ -35,11 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Event tracking templates for common patterns (navigation, forms, buttons, entity creation, state changes)
   - Framework-specific instructions (Next.js App Router, Pages Router, Create React App, Vite)
   - Reference to harness app implementation
-- **Quadrant-Based Positioning Strategy** (Planned)
-  - Overlay positioning will use quadrant-based strategy instead of target element attachment
-  - Supports viewport-relative quadrants (top-left, top-right, bottom-left, bottom-right)
-  - Backend can specify quadrant preference or SDK can auto-detect best quadrant
-  - Replaces current target element positioning approach for better flexibility
+- **Quadrant-Based Positioning Strategy** (Implemented)
+  - Overlay positioning uses quadrant-based strategy instead of target element attachment
+  - Supports 6 viewport-relative quadrants: topLeft, topCenter, topRight, bottomLeft, bottomCenter, bottomRight
+  - Backend can specify quadrant preference via `WireNudgeDecision.quadrant` field
+  - Defaults to `"topCenter"` if not specified
+  - Replaces target element positioning approach for better flexibility and predictability
+  - Tooltip positioning automatically centers within the selected quadrant
+  - Responsive positioning that recalculates on viewport resize using ResizeObserver
 - **EventPayload type**: Explicit type export for event properties (`Record<string, any>`)
   - Provides clear type definition for event payloads throughout the SDK
   - Exported from `@reveal/client` for use in host applications

@@ -65,7 +65,10 @@ Different templates may use quadrants differently:
 ### Tooltip
 - Positions in specified quadrant (defaults to `topCenter`)
 - Fixed positioning based on viewport dimensions and tooltip size
-- No target element attachment or arrows
+- Glassmorphic styling with translucent background, backdrop blur, and subtle borders
+- Arrow bubble indicator appears above tooltip (for bottom quadrants) or below tooltip (for top quadrants)
+- Arrow bubble is always centered horizontally on the tooltip and features a floating animation
+- No target element attachment
 
 ### Banner
 - Typically uses `topLeft`, `topCenter`, or `topRight` quadrants

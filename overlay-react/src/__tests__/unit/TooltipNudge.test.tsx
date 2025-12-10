@@ -140,7 +140,7 @@ describe('TooltipNudge', () => {
 
     // Wait for tooltip to render, then click "Got it"
     await waitFor(() => {
-      const gotItButton = screen.getByText('Got it');
+      const gotItButton = screen.getByText('✔️ Got it');
       fireEvent.click(gotItButton);
     });
 
@@ -160,7 +160,7 @@ describe('TooltipNudge', () => {
       />
     );
 
-    expect(screen.queryByText('Got it')).not.toBeInTheDocument();
+    expect(screen.queryByText('✔️ Got it')).not.toBeInTheDocument();
   });
 
   it('renders tooltip in topCenter by default when quadrant not specified', async () => {
