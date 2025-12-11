@@ -23,6 +23,7 @@ import { createTransport, type Transport } from "../modules/transport";
 import { createEventPipeline, type EventPipeline } from "../modules/eventPipeline";
 import { setAuditLogger } from "../security/auditLogger";
 import { setErrorLogger } from "../errors/errorHandler";
+import { validateAllBackendUrls, validateHttpsUrl } from "../security/inputValidation";
 import type { FrictionSignal } from "../types/friction";
 import type { ClientConfig } from "../types/config";
 import type { WireNudgeDecision } from "../types/decisions";
@@ -75,9 +76,6 @@ export async function init(
     return;
   }
 
-  // Mark as initialized immediately to prevent race conditions
-  isInitialized = true;
-
   // SETUP: Extract options
   const debugMode = options.debug === true;
 
@@ -91,6 +89,25 @@ export async function init(
   // SECURITY: Wire logger into audit and error handling modules
   setAuditLogger(loggerRef);
   setErrorLogger(loggerRef);
+
+  // ──────────────────────────────────────────────────────────────────────
+  // SECURITY: Validate apiBase first (if provided) before using it to construct URLs
+  // This happens synchronously before marking as initialized
+  // ──────────────────────────────────────────────────────────────────────
+  if (options.apiBase && typeof options.apiBase === "string") {
+    const apiBaseValidation = validateHttpsUrl(options.apiBase);
+    if (!apiBaseValidation.valid) {
+      const errorMessage = `[Reveal SDK] SECURITY: Backend URLs must use HTTPS. API base URL ${apiBaseValidation.error}`;
+      loggerRef.logError(errorMessage);
+      console.error(errorMessage);
+      isDisabled = true;
+      isInitialized = false; // Allow retry if desired
+      return; // Exit early, no modules initialized
+    }
+  }
+
+  // Mark as initialized after initial validation passes
+  isInitialized = true;
 
   // ORCHESTRATE: Async initialization flow
   safeTryAsync(async () => {
@@ -119,19 +136,45 @@ export async function init(
 
     // For now, create a minimal config for DetectorManager to work
     // TODO: Replace with real ConfigClient when implemented
+    const environment = (options.environment as "production" | "staging" | "development") || "development";
+    
+    // Environment-aware timeout defaults:
+    // - Production: 400ms (realistic for network + backend processing)
+    // - Development: 2000ms (allows for CORS preflight + logging overhead)
+    const defaultDecisionTimeout = environment === "production" ? 400 : 2000;
+    
     const minimalConfig: ClientConfig = {
       projectId: clientKey, // Temporary: use clientKey as projectId
-      environment: (options.environment as "production" | "staging" | "development") || "development",
+      environment,
       sdk: {
         samplingRate: 1.0,
       },
       decision: {
         endpoint: options.decisionEndpoint || `${options.apiBase || "https://api.reveal.io"}/decide`,
-        timeoutMs: options.decisionTimeoutMs || 200,
+        timeoutMs: options.decisionTimeoutMs || defaultDecisionTimeout,
       },
       templates: [],
       ttlSeconds: 3600,
     };
+
+    // ──────────────────────────────────────────────────────────────────────
+    // SECURITY: Validate all backend URLs are HTTPS (localhost exception)
+    // ──────────────────────────────────────────────────────────────────────
+    // Validate ingest and decision endpoints (apiBase already validated above)
+    const urlValidation = validateAllBackendUrls({
+      ingestEndpoint,
+      decisionEndpoint: minimalConfig.decision.endpoint,
+      // apiBase already validated above, don't validate again
+    });
+
+    if (!urlValidation.valid) {
+      const errorMessage = `[Reveal SDK] SECURITY: Backend URLs must use HTTPS. ${urlValidation.error}`;
+      loggerRef.logError(errorMessage);
+      console.error(errorMessage);
+      isDisabled = true;
+      isInitialized = false; // Allow retry if desired
+      return; // Exit early, no modules initialized
+    }
 
     // STEP 6: DetectorManager – friction detection
     function onFrictionSignal(rawSignal: FrictionSignal) {
@@ -366,9 +409,6 @@ export function onNudgeDecision(
  * Destroy the SDK instance and clean up resources
  */
 export function destroy(): void {
-  if (isDisabled && !isInitialized) {
-    return;
-  }
   safeTry(() => {
     logger?.logDebug("Reveal.destroy() called");
     cleanup();

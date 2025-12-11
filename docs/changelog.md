@@ -7,14 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **HTTPS URL Validation at Initialization**: Security hard requirement enforcement
+  - All backend URLs (`ingestEndpoint`, `decisionEndpoint`, `apiBase`) are validated for HTTPS at SDK initialization
+  - SDK disables itself (`isDisabled = true`) if any non-HTTPS URL is detected
+  - Clear error messages logged when validation fails
+  - Localhost exception: `http://localhost` and `http://127.0.0.1` allowed for local development
+  - Validation happens before any modules are created, ensuring no network requests with insecure URLs
+  - Implementation: `validateHttpsUrl()` and `validateAllBackendUrls()` in `security/inputValidation.ts`
+  - Comprehensive test coverage: 15 unit tests for validation, 7 integration tests for SDK init
+
 ### Changed
+- **Environment-Aware Decision Request Timeout**: More realistic timeout defaults for production
+  - Production default: 400ms (was 200ms) - accounts for network latency and backend processing time
+  - Development default: 2000ms (unchanged) - allows for CORS preflight and logging overhead
+  - Timeout is automatically set based on `environment` option in `Reveal.init()`
+  - Still configurable via `decisionTimeoutMs` option if needed
+  - Aligns with architecture target of 100-400ms end-to-end decision time
+  - Reduces timeout failures in production while maintaining fail-fast behavior
 - **Unified Transport Architecture**: Consolidated Transport and DecisionClient HTTP logic into single Transport module
   - Transport now provides two methods: `sendBatch()` for event batches and `sendDecisionRequest()` for decision requests
   - Single `globalFetch()` wrapper eliminates duplicate fetch implementations (fixes audit concern)
   - Single audit logging point for all network requests in `transport.ts`
   - DecisionClient now delegates HTTP requests to Transport instead of using its own fetch wrapper
   - Maintains architectural separation: EventPipeline uses `sendBatch()`, DecisionClient uses `sendDecisionRequest()`
-  - Performance characteristics preserved: 10s timeout with retries for events, 200ms strict timeout for decisions
+  - Performance characteristics preserved: 10s timeout with retries for events, 400ms (production) / 2000ms (development) environment-aware timeout for decisions
   - No breaking changes: all public APIs remain unchanged
   - Updated all documentation to reflect single transport boundary
   - Comprehensive test coverage: 114 tests passing (31 transport tests, 14 decisionClient tests)
@@ -138,7 +155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Auto-starts global stall detection on SDK initialization
   - Emits `friction_idle` events when stall conditions are detected
 - **DecisionClient**: Complete vertical slice for friction → decision → nudge flow
-  - Implements HTTP client for `/decide` endpoint with 200ms timeout enforcement
+  - Implements HTTP client for `/decide` endpoint with environment-aware timeout enforcement (400ms production, 2000ms development)
   - Handles null decisions, timeouts, and network errors gracefully (never throws)
   - Validates decision responses and extracts `WireNudgeDecision`
   - Integrated into EntryPoint friction signal flow

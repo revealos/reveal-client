@@ -86,8 +86,8 @@ export function RevealContextProvider({ children }: { children: React.ReactNode 
           ? 'http://localhost:3000/decide'  // Adjust if local dev server differs
           : 'https://api.reveal.io/decide'),
       
-      // Timeout: longer for dev (CORS preflight + logging), shorter for prod
-      decisionTimeoutMs: isDevelopment ? 2000 : 200,
+      // Timeout: longer for dev (CORS preflight + logging), realistic for prod (network + backend processing)
+      decisionTimeoutMs: isDevelopment ? 2000 : 400,
       
       // Debug logging in development only
       debug: isDevelopment,

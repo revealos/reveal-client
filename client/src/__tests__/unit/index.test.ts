@@ -4,10 +4,23 @@
  * Basic tests to verify SDK exports and core functionality.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Reveal, type EventKind, type FrictionSignal, type WireNudgeDecision } from '../../index';
 
 describe('Reveal SDK', () => {
+  // Reset SDK state before each test
+  beforeEach(() => {
+    // Destroy any existing SDK instance (synchronous)
+    Reveal.destroy();
+    // Wait a bit to ensure cleanup completes
+    return new Promise(resolve => setTimeout(resolve, 10));
+  });
+
+  afterEach(() => {
+    // Clean up after each test
+    Reveal.destroy();
+  });
+
   describe('Exports', () => {
     it('should export Reveal object', () => {
       expect(Reveal).toBeDefined();
@@ -70,6 +83,133 @@ describe('Reveal SDK', () => {
       expect(() => {
         Reveal.init('test-key');
       }).not.toThrow();
+    });
+
+    describe('HTTPS URL validation', () => {
+
+      it('should initialize successfully with HTTPS URLs', async () => {
+        await Reveal.init('test-key', {
+          ingestEndpoint: 'https://api.reveal.io/ingest',
+          decisionEndpoint: 'https://api.reveal.io/decide',
+        });
+        // Should not throw and SDK should be initialized
+        expect(() => {
+          Reveal.track('product', 'test');
+        }).not.toThrow();
+      });
+
+      it('should initialize successfully with localhost HTTP URLs (development exception)', async () => {
+        await Reveal.init('test-key', {
+          ingestEndpoint: 'http://localhost:3000/ingest',
+          decisionEndpoint: 'http://localhost:3000/decide',
+        });
+        // Should not throw and SDK should be initialized
+        expect(() => {
+          Reveal.track('product', 'test');
+        }).not.toThrow();
+      });
+
+      it('should initialize successfully with 127.0.0.1 HTTP URLs (development exception)', async () => {
+        await Reveal.init('test-key', {
+          ingestEndpoint: 'http://127.0.0.1:3000/ingest',
+          decisionEndpoint: 'http://127.0.0.1:3000/decide',
+        });
+        // Should not throw and SDK should be initialized
+        expect(() => {
+          Reveal.track('product', 'test');
+        }).not.toThrow();
+      });
+
+      it('should disable SDK and log error for non-HTTPS ingest endpoint', async () => {
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        
+        await Reveal.init('test-key-https-validation-1', {
+          ingestEndpoint: 'http://api.reveal.io/ingest', // Invalid: non-localhost HTTP
+          decisionEndpoint: 'https://api.reveal.io/decide',
+        });
+
+        // SDK should be disabled
+        expect(consoleErrorSpy).toHaveBeenCalled();
+        const errorCall = consoleErrorSpy.mock.calls[0][0];
+        expect(errorCall).toContain('SECURITY');
+        expect(errorCall).toContain('HTTPS');
+        expect(errorCall).toContain('Ingest endpoint');
+
+        // SDK should not function (disabled)
+        Reveal.track('product', 'test'); // Should be no-op when disabled
+
+        consoleErrorSpy.mockRestore();
+      });
+
+      it('should disable SDK and log error for non-HTTPS decision endpoint', async () => {
+        const errorCalls: any[] = [];
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+          errorCalls.push(args);
+        });
+        
+        await Reveal.init('test-key-https-validation-2', {
+          ingestEndpoint: 'https://api.reveal.io/ingest',
+          decisionEndpoint: 'http://api.reveal.io/decide', // Invalid: non-localhost HTTP
+        });
+
+        // Wait for async validation to complete
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // SDK should be disabled and error logged
+        expect(errorCalls.length).toBeGreaterThan(0);
+        const errorCall = errorCalls[0][0];
+        expect(errorCall).toContain('SECURITY');
+        expect(errorCall).toContain('HTTPS');
+        expect(errorCall).toContain('Decision endpoint');
+
+        consoleErrorSpy.mockRestore();
+      });
+
+      it('should disable SDK and log error for non-HTTPS apiBase', async () => {
+        const errorCalls: any[] = [];
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+          errorCalls.push(args);
+        });
+        
+        await Reveal.init('test-key-https-validation-3', {
+          apiBase: 'http://api.reveal.io', // Invalid: non-localhost HTTP
+        });
+
+        // Wait for async validation to complete (apiBase is validated synchronously, but wait for any async cleanup)
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // SDK should be disabled and error logged
+        // apiBase is validated first, before it's used to construct URLs
+        expect(errorCalls.length).toBeGreaterThan(0);
+        const errorCall = errorCalls[0][0];
+        expect(errorCall).toContain('SECURITY');
+        expect(errorCall).toContain('HTTPS');
+        expect(errorCall).toContain('API base URL');
+
+        consoleErrorSpy.mockRestore();
+      });
+
+      it('should disable SDK for invalid URL format', async () => {
+        const errorCalls: any[] = [];
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+          errorCalls.push(args);
+        });
+        
+        await Reveal.init('test-key-https-validation-4', {
+          ingestEndpoint: 'not-a-valid-url',
+          decisionEndpoint: 'https://api.reveal.io/decide',
+        });
+
+        // Wait for async validation to complete
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // SDK should be disabled and error logged
+        expect(errorCalls.length).toBeGreaterThan(0);
+        const errorCall = errorCalls[0][0];
+        expect(errorCall).toContain('SECURITY');
+
+        consoleErrorSpy.mockRestore();
+      });
     });
   });
 

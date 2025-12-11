@@ -20,9 +20,11 @@ Reveal.init(clientKey: string, options?: InitOptions): Promise<void>
 | `apiBase` | `string` | `"https://api.reveal.io"` | You (if self-hosting) | Backend API base URL. Only needed if self-hosting or using non-default URL |
 | `ingestEndpoint` | `string` | `"{apiBase}/ingest"` | You (if custom) | Explicit event ingestion endpoint. Overrides `apiBase` |
 | `decisionEndpoint` | `string` | `"{apiBase}/decide"` | You (if custom) | Explicit decision endpoint. Overrides `apiBase` |
-| `decisionTimeoutMs` | `number` | `200` | You (if custom) | Timeout for decision requests in milliseconds |
+| `decisionTimeoutMs` | `number` | `400` (production), `2000` (development) | You (if custom) | Timeout for decision requests in milliseconds. Defaults are environment-aware: 400ms for production (realistic for network + backend processing), 2000ms for development (allows CORS preflight + logging overhead) |
 | `debug` | `boolean` | `false` | You (dev only) | Enable debug logging. Set to `true` in development |
 | `environment` | `string` | `"development"` | You | Environment: `"production"` \| `"staging"` \| `"development"` |
+
+**Security Note:** All backend URLs (`ingestEndpoint`, `decisionEndpoint`, `apiBase`) must use HTTPS protocol. The SDK will disable itself at initialization if any non-HTTPS URL is detected. Exception: `http://localhost` and `http://127.0.0.1` are allowed for local development only.
 
 **Note:** The backend **decides** which nudges to show, but the SDK still needs to know **where** to send events and requests. In production apps, you typically only set `clientKey` (and optionally `apiBase` if self-hosting). The harness app sets all options because it mocks backend endpoints for local testing.
 

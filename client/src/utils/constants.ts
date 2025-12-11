@@ -11,7 +11,9 @@
  */
 export const DEFAULTS = {
   // Timeouts
-  DECISION_TIMEOUT_MS: 200,
+  // Note: Decision timeout is environment-aware (400ms production, 2000ms development)
+  // This constant is a fallback; actual default is set in entryPoint.ts based on environment
+  DECISION_TIMEOUT_MS: 400, // Production default (development uses 2000ms)
   TRANSPORT_TIMEOUT_MS: 10000,
   
   // Intervals

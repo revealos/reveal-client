@@ -198,14 +198,18 @@ All inputs to the SDK are validated and sanitized to prevent injection attacks.
 
 ## Transport Security
 
-- **HTTPS is enforced** for all backend communication
+- **HTTPS is validated at initialization** for all backend URLs before any modules are created
+- **SDK disables itself** if any backend URL is not HTTPS (with localhost exception for development)
+- **Localhost exception** allows `http://localhost` and `http://127.0.0.1` for local development
 - **SSL certificate validation** is enabled by default
 - **Client keys are not secrets** (identify project only)
 - **Single transport layer** - All network calls go through one auditable file
 
-**Status**: Enforced in transport layer.
+**Status**: Validated at initialization (`entryPoint.ts`) and enforced in transport layer.
 
-**Location**: `packages/client/src/modules/transport.ts`
+**Location**: 
+- Validation: `packages/client/src/core/entryPoint.ts` (init time)
+- Transport: `packages/client/src/modules/transport.ts` (runtime)
 
 ---
 
