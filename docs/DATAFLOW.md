@@ -19,7 +19,60 @@ The Overlay has one responsibility:
 
 ---
 
-## Data Flow Diagram
+## CLIENT Boundary (SDK → Transport → Backend)
+
+This diagram shows the **client-side architecture** and **audit-visible boundaries** within the browser. All network egress flows through a single transport module, and all data passes through sanitization guardrails before leaving the browser.
+
+```mermaid
+flowchart LR
+  %% CLIENT boundary (what runs in the browser)
+  subgraph CLIENT["🔒 CLIENT (Browser boundary)"]
+    direction TB
+    App["Host App\nreveal.init()\nreveal.track()"]
+    Detectors["Detectors\n(Stall/RageClick/Backtrack)\nAuto-detect friction"]
+    Pipeline["EventPipeline\n(enrich + batch events)"]
+    Sanitizers["🔍 Guardrails\nscrubPII()\nscrubUrlPII()\n(flat payload rules)"]
+    Decision["DecisionClient\n(build decision request)"]
+    Transport["🌐 Transport\n(single network module)\nvalidate HTTPS at init\nsendBatch()\nsendDecisionRequest()"]
+    Overlay["Overlay UI\n(render plain-text props)"]
+    
+    App --> Pipeline
+    Detectors --> Pipeline
+    Detectors --> Decision
+    Pipeline --> Sanitizers --> Transport
+    Decision --> Sanitizers --> Transport
+    Transport --> Overlay
+    Overlay --> Pipeline
+  end
+
+  %% SERVER edge (abstract, just endpoints)
+  subgraph SERVER_EDGE["BACKEND (outside browser)"]
+    direction TB
+    Ingest["POST /ingest\n(EventBatch)"]
+    Decide["POST /decide\n(DecisionRequest)"]
+  end
+
+  Transport -- "HTTPS POST /ingest<br/>EventBatch&lt;OutboundEvent[]&gt;" --> Ingest
+  Transport -- "HTTPS POST /decide<br/>DecisionRequest" --> Decide
+  Decide -- "200 OK<br/>NudgeDecision (plain JSON)" --> Transport
+
+  %% Audit emphasis styling
+  classDef audit fill:#fff3cd,stroke:#ff9900,stroke-width:3px,color:#111,font-weight:bold;
+  class Transport,Sanitizers audit;
+```
+
+**Audit-visible components** (highlighted in yellow):
+- **Transport**: Single auditable file for all network requests (`packages/client/src/modules/transport.ts`)
+- **Guardrails**: PII scrubbing and URL sanitization (`packages/client/src/security/dataSanitization.ts`)
+
+**Key flows:**
+1. **Event path**: Host app / Detectors → EventPipeline → Guardrails → Transport → `/ingest`
+2. **Decision path**: Detectors → DecisionClient → Guardrails → Transport → `/decide` → Overlay
+3. **Interaction path**: Overlay → EventPipeline → Guardrails → Transport → `/ingest`
+
+---
+
+## Data Flow Diagram (High-Level Overview)
 
 ```mermaid
 flowchart TD
@@ -113,7 +166,44 @@ This is the **single auditable file** for all network requests. No other file in
 
 ---
 
-## Backend Processing
+## SERVER Boundary (Ingest → Decision Engine → Return)
+
+This diagram shows the **server-side processing flow** from event ingestion through decision evaluation to response generation. The backend remains abstract (implementation details are not shown).
+
+```mermaid
+flowchart LR
+  subgraph SERVER["🔒 SERVER (Backend boundary)"]
+    direction TB
+    Ingest["POST /ingest<br/>EventBatch"]
+    Normalize["Normalize/Validate<br/>(schema validation,<br/>flattening expectations)"]
+    Store[("Event Store<br/>(persist events)")]
+    Features["Session + Feature Builder<br/>(user state,<br/>friction level,<br/>recent events)"]
+    Decide["Decision Engine<br/>(rules/ML/experiments)"]
+    Response["Return<br/>NudgeDecision JSON<br/>(no HTML, no code)"]
+    
+    Ingest --> Normalize --> Store --> Features --> Decide --> Response
+  end
+
+  %% Client edge (abstract)
+  subgraph CLIENT_EDGE["CLIENT (outside server)"]
+    Transport["Transport"]
+    Overlay["Overlay UI"]
+  end
+
+  Transport --> Ingest
+  Response --> Overlay
+
+  %% Audit emphasis
+  classDef audit fill:#fff3cd,stroke:#ff9900,stroke-width:3px,color:#111,font-weight:bold;
+  class Ingest,Normalize,Response audit;
+```
+
+**Audit-visible boundaries** (highlighted in yellow):
+- **Ingest**: Input boundary (receives all client events)
+- **Normalize/Validate**: Guardrails (schema validation, data normalization)
+- **Response**: Output boundary (returns only plain JSON, no executable content)
+
+## Backend Processing Details
 
 1. **Ingest** receives the event and attaches session context
 2. **Decision Engine** checks user state + friction level
@@ -151,6 +241,67 @@ The Overlay receives a strict JSON object:
 ```
 
 **Rendered via React using plain props** — no HTML injection, no `dangerouslySetInnerHTML`, no dynamic code execution.
+
+---
+
+## FULL DATAFLOW (Events + Transformations + Guardrails)
+
+This sequence diagram shows the **complete end-to-end flow** with all transformations, guardrails, and the "ping-pong" request/response cycle between client and server.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as User
+  participant A as Host App
+  participant SDK as Reveal SDK
+  participant D as Detectors<br/>(Stall/RageClick/Backtrack)
+  participant EP as EventPipeline<br/>(enrich + batch)
+  participant SEC as Guardrails<br/>(scrubPII/scrubUrlPII)
+  participant T as Transport<br/>(single network module)
+  participant BI as Backend: /ingest
+  participant BD as Backend: /decide
+  participant O as Overlay UI
+
+  Note over U,O: User interaction triggers explicit event
+  U->>A: interacts
+  A->>SDK: reveal.track(kind, name, payload)
+  SDK->>EP: enqueue event
+  EP->>SEC: enrich + sanitize<br/>(known PII fields only)
+  SEC->>T: sendBatch(EventBatch)
+  T->>BI: HTTPS POST /ingest<br/>{projectId, sessionId, event[]}
+  BI-->>T: 200 OK (ack)
+  T-->>EP: success/failure<br/>(retry/backoff if needed)
+
+  Note over SDK,O: Friction detected (e.g. stall detector)
+  D->>SDK: emit FrictionSignal<br/>{type, pageUrl, selector, timestamp}
+  SDK->>EP: captureEvent("friction", ...)<br/>(async, goes to batch)
+  SDK->>SEC: sanitize friction.pageUrl<br/>(scrubUrlPII)
+  SDK->>T: sendDecisionRequest(DecisionRequest)<br/>(immediate, bypasses batch)
+  T->>BD: HTTPS POST /decide<br/>{projectId, sessionId, friction}
+  BD->>BD: evaluate decision<br/>(rules/ML/experiments)
+  BD-->>T: 200 OK NudgeDecision<br/>{nudgeId, templateId, title, body, ...}
+  T-->>O: deliver decision
+  O->>U: render nudge<br/>(plain text, no HTML injection)
+
+  Note over U,O: User interacts with nudge
+  U->>O: click/dismiss
+  O->>EP: emit nudge interaction event<br/>(shown/clicked/dismissed)
+  EP->>SEC: sanitize payload
+  SEC->>T: sendBatch(EventBatch)
+  T->>BI: HTTPS POST /ingest
+  BI-->>T: 200 OK
+```
+
+**Key transformations:**
+1. **Event enrichment**: EventPipeline adds metadata (session, location, viewport, user_agent, timestamps)
+2. **PII scrubbing**: Guardrails redact known PII keys (`email`, `phone`, `password`, etc.) and email addresses in URLs
+3. **Batching**: EventPipeline buffers events and sends in batches (periodic flush or threshold)
+4. **Decision request**: Immediate path (bypasses batching) for friction signals to enable real-time nudge delivery
+
+**Data formats:**
+- **EventBatch**: `{projectId, sessionId, event: OutboundEvent[]}`
+- **DecisionRequest**: `{projectId, sessionId, friction: FrictionSignal}`
+- **NudgeDecision**: `{nudgeId, templateId, title?, body?, ctaText?, quadrant?, ...}`
 
 ---
 

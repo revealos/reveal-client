@@ -197,7 +197,7 @@ export function createDecisionClient(
       endpoint,
       payload,
       {
-        timeoutMs,
+          timeoutMs,
         clientKey,
       }
     );
