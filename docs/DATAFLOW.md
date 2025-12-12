@@ -28,13 +28,13 @@ flowchart LR
   %% CLIENT boundary (what runs in the browser)
   subgraph CLIENT["🔒 CLIENT (Browser boundary)"]
     direction TB
-    App["Host App\nreveal.init()\nreveal.track()"]
-    Detectors["Detectors\n(Stall/RageClick/Backtrack)\nAuto-detect friction"]
-    Pipeline["EventPipeline\n(enrich + batch events)"]
-    Sanitizers["🔍 Guardrails\nscrubPII()\nscrubUrlPII()\n(flat payload rules)"]
-    Decision["DecisionClient\n(build decision request)"]
-    Transport["🌐 Transport\n(single network module)\nvalidate HTTPS at init\nsendBatch()\nsendDecisionRequest()"]
-    Overlay["Overlay UI\n(render plain-text props)"]
+    App["Host App<br/>reveal.init()<br/>reveal.track()"]
+    Detectors["Detectors<br/>(Stall/RageClick/Backtrack)<br/>Auto-detect friction"]
+    Pipeline["EventPipeline<br/>(enrich + batch events)"]
+    Sanitizers["🔍 Guardrails<br/>scrubPII()<br/>scrubUrlPII()<br/>(flat payload rules)"]
+    Decision["DecisionClient<br/>(build decision request)"]
+    Transport["🌐 Transport<br/>(single network module)<br/>validate HTTPS at init<br/>sendBatch()<br/>sendDecisionRequest()"]
+    Overlay["Overlay UI<br/>(render plain-text props)"]
     
     App --> Pipeline
     Detectors --> Pipeline
@@ -48,8 +48,8 @@ flowchart LR
   %% SERVER edge (abstract, just endpoints)
   subgraph SERVER_EDGE["BACKEND (outside browser)"]
     direction TB
-    Ingest["POST /ingest\n(EventBatch)"]
-    Decide["POST /decide\n(DecisionRequest)"]
+    Ingest["POST /ingest<br/>(EventBatch)"]
+    Decide["POST /decide<br/>(DecisionRequest)"]
   end
 
   Transport -- "HTTPS POST /ingest<br/>EventBatch&lt;OutboundEvent[]&gt;" --> Ingest
@@ -172,7 +172,7 @@ This diagram shows the **server-side processing flow** from event ingestion thro
 
 ```mermaid
 flowchart LR
-  subgraph SERVER["🔒 SERVER (Backend boundary)"]
+  subgraph SERVER["🔒 SERVER Backend Boundary"]
     direction TB
     Ingest["POST /ingest<br/>EventBatch"]
     Normalize["Normalize/Validate<br/>(schema validation,<br/>flattening expectations)"]
