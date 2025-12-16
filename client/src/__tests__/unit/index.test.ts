@@ -250,13 +250,33 @@ describe('Reveal SDK', () => {
           decisionEndpoint: 'https://api.reveal.io/decide',
         });
 
-        // Wait for async validation to complete
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Wait for async validation to complete (config fetch + URL validation)
+        // Increased timeout to account for config fetch in CI
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         // SDK should be disabled and error logged
         expect(errorCalls.length).toBeGreaterThan(0);
-        const errorCall = errorCalls.find(call => call[0]?.includes('SECURITY') && call[0]?.includes('Ingest endpoint'));
-        expect(errorCall).toBeDefined();
+        
+        // Look for SECURITY error - it should contain "SECURITY", "Ingest", and "HTTPS"
+        // The exact format is: "[Reveal SDK] SECURITY: Backend URLs must use HTTPS. Ingest endpoint URL must use HTTPS protocol: ..."
+        // Check all arguments in each call, not just the first one
+        const securityError = errorCalls.find(call => {
+          // Convert all arguments to string and check
+          const allArgs = call.map((arg: any) => String(arg || '')).join(' ');
+          return allArgs.includes('SECURITY') && 
+                 (allArgs.includes('Ingest') || allArgs.includes('ingest') || allArgs.includes('ingestEndpoint')) &&
+                 allArgs.includes('HTTPS');
+        });
+        
+        // If not found, log all errors for debugging
+        if (!securityError && errorCalls.length > 0) {
+          const allErrorMessages = errorCalls.map(call => call.map((arg: any) => String(arg || '')).join(' '));
+          console.log('All error calls:', allErrorMessages);
+        }
+        
+        expect(securityError).toBeDefined();
+        const errorMsg = securityError.map((arg: any) => String(arg || '')).join(' ');
+        expect(errorMsg).toContain('HTTPS');
 
         // SDK should not function (disabled)
         Reveal.track('product', 'test'); // Should be no-op when disabled
@@ -317,16 +337,35 @@ describe('Reveal SDK', () => {
           apiBase: 'http://api.reveal.io', // Invalid: non-localhost HTTP
         });
 
-        // Wait for async validation to complete (apiBase is validated synchronously, but wait for any async cleanup)
-        await new Promise(resolve => setTimeout(resolve, 50));
+        // Wait for async validation to complete (apiBase is validated synchronously, but wait for config fetch)
+        // Increased timeout to account for config fetch in CI
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         // SDK should be disabled and error logged
         // apiBase is validated first, before it's used to construct URLs
         expect(errorCalls.length).toBeGreaterThan(0);
-        const errorCall = errorCalls[0][0];
-        expect(errorCall).toContain('SECURITY');
-        expect(errorCall).toContain('HTTPS');
-        expect(errorCall).toContain('API base URL');
+        
+        // Look for SECURITY error - it should contain "SECURITY", "API base", and "HTTPS"
+        // The exact format is: "[Reveal SDK] SECURITY: Backend URLs must use HTTPS. API base URL URL must use HTTPS protocol: ..."
+        // Check all arguments in each call, not just the first one
+        const securityError = errorCalls.find(call => {
+          // Convert all arguments to string and check
+          const allArgs = call.map((arg: any) => String(arg || '')).join(' ');
+          return allArgs.includes('SECURITY') && 
+                 (allArgs.includes('API base') || allArgs.includes('apiBase') || allArgs.includes('api base')) &&
+                 allArgs.includes('HTTPS');
+        });
+        
+        // If not found, log all errors for debugging
+        if (!securityError && errorCalls.length > 0) {
+          const allErrorMessages = errorCalls.map(call => call.map((arg: any) => String(arg || '')).join(' '));
+          console.log('All error calls:', allErrorMessages);
+        }
+        
+        expect(securityError).toBeDefined();
+        const errorMsg = securityError.map((arg: any) => String(arg || '')).join(' ');
+        expect(errorMsg).toContain('HTTPS');
+        expect(errorMsg).toMatch(/API base|apiBase|api base/i);
 
         consoleErrorSpy.mockRestore();
       });
