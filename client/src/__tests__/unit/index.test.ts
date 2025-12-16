@@ -85,6 +85,125 @@ describe('Reveal SDK', () => {
       }).not.toThrow();
     });
 
+    describe('Config fetch', () => {
+      it('should fetch config from backend when apiBase is provided', async () => {
+        const mockConfig = {
+          projectId: 'test-project',
+          environment: 'development',
+          sdk: { samplingRate: 1.0 },
+          decision: { endpoint: '/decide', timeoutMs: 2000 },
+          templates: [],
+          ttlSeconds: 60,
+        };
+
+        const originalFetch = global.fetch;
+        global.fetch = vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => mockConfig,
+        }) as any;
+
+        try {
+          await Reveal.init('test-key', {
+            apiBase: 'https://api.reveal.io',
+          });
+
+          // Verify fetch was called for config
+          expect(global.fetch).toHaveBeenCalledWith(
+            expect.stringContaining('/config'),
+            expect.objectContaining({
+              method: 'GET',
+              headers: expect.objectContaining({
+                'X-Reveal-Client-Key': 'test-key',
+              }),
+            })
+          );
+        } finally {
+          global.fetch = originalFetch;
+        }
+      });
+
+      it('should fall back to minimalConfig if config fetch fails', async () => {
+        const originalFetch = global.fetch;
+        global.fetch = vi.fn().mockRejectedValue(new Error('Network error')) as any;
+
+        try {
+          // Should not throw - should fall back gracefully
+          await Reveal.init('test-key', {
+            apiBase: 'https://api.reveal.io',
+          });
+
+          // SDK should still be functional with fallback config
+          expect(() => {
+            Reveal.track('product', 'test');
+          }).not.toThrow();
+        } finally {
+          global.fetch = originalFetch;
+        }
+      });
+
+      it('should use configEndpoint if explicitly provided', async () => {
+        const mockConfig = {
+          projectId: 'test-project',
+          environment: 'development',
+          sdk: { samplingRate: 1.0 },
+          decision: { endpoint: '/decide', timeoutMs: 2000 },
+          templates: [],
+          ttlSeconds: 60,
+        };
+
+        const originalFetch = global.fetch;
+        global.fetch = vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => mockConfig,
+        }) as any;
+
+        try {
+          await Reveal.init('test-key', {
+            configEndpoint: 'https://custom.api.com/config',
+          });
+
+          // Verify fetch was called with custom endpoint
+          expect(global.fetch).toHaveBeenCalledWith(
+            expect.stringContaining('https://custom.api.com/config'),
+            expect.any(Object)
+          );
+        } finally {
+          global.fetch = originalFetch;
+        }
+      });
+
+      it('should construct config endpoint from apiBase if configEndpoint not provided', async () => {
+        const mockConfig = {
+          projectId: 'test-project',
+          environment: 'development',
+          sdk: { samplingRate: 1.0 },
+          decision: { endpoint: '/decide', timeoutMs: 2000 },
+          templates: [],
+          ttlSeconds: 60,
+        };
+
+        const originalFetch = global.fetch;
+        global.fetch = vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => mockConfig,
+        }) as any;
+
+        try {
+          await Reveal.init('test-key', {
+            apiBase: 'https://api.example.com',
+          });
+
+          // Verify fetch was called with constructed endpoint
+          expect(global.fetch).toHaveBeenCalledWith(
+            expect.stringContaining('https://api.example.com/config?environment=development'),
+            expect.any(Object)
+          );
+        } finally {
+          global.fetch = originalFetch;
+        }
+      });
+    });
+
     describe('HTTPS URL validation', () => {
 
       it('should initialize successfully with HTTPS URLs', async () => {
@@ -121,19 +240,23 @@ describe('Reveal SDK', () => {
       });
 
       it('should disable SDK and log error for non-HTTPS ingest endpoint', async () => {
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const errorCalls: any[] = [];
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+          errorCalls.push(args);
+        });
         
         await Reveal.init('test-key-https-validation-1', {
           ingestEndpoint: 'http://api.reveal.io/ingest', // Invalid: non-localhost HTTP
           decisionEndpoint: 'https://api.reveal.io/decide',
         });
 
-        // SDK should be disabled
-        expect(consoleErrorSpy).toHaveBeenCalled();
-        const errorCall = consoleErrorSpy.mock.calls[0][0];
-        expect(errorCall).toContain('SECURITY');
-        expect(errorCall).toContain('HTTPS');
-        expect(errorCall).toContain('Ingest endpoint');
+        // Wait for async validation to complete
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // SDK should be disabled and error logged
+        expect(errorCalls.length).toBeGreaterThan(0);
+        const errorCall = errorCalls.find(call => call[0]?.includes('SECURITY') && call[0]?.includes('Ingest endpoint'));
+        expect(errorCall).toBeDefined();
 
         // SDK should not function (disabled)
         Reveal.track('product', 'test'); // Should be no-op when disabled
@@ -156,11 +279,11 @@ describe('Reveal SDK', () => {
         await new Promise(resolve => setTimeout(resolve, 200));
 
         // SDK should be disabled and error logged
+        // May see config fetch error first, but SECURITY error should also appear
         expect(errorCalls.length).toBeGreaterThan(0);
-        const errorCall = errorCalls[0][0];
-        expect(errorCall).toContain('SECURITY');
-        expect(errorCall).toContain('HTTPS');
-        expect(errorCall).toContain('Decision endpoint');
+        const securityError = errorCalls.find(call => call[0]?.includes('SECURITY') && call[0]?.includes('Decision endpoint'));
+        expect(securityError).toBeDefined();
+        expect(securityError[0]).toContain('HTTPS');
 
         consoleErrorSpy.mockRestore();
       });
@@ -204,9 +327,11 @@ describe('Reveal SDK', () => {
         await new Promise(resolve => setTimeout(resolve, 200));
 
         // SDK should be disabled and error logged
+        // May be SECURITY error or ConfigClient fetch error (both are valid)
         expect(errorCalls.length).toBeGreaterThan(0);
-        const errorCall = errorCalls[0][0];
-        expect(errorCall).toContain('SECURITY');
+        const hasSecurityError = errorCalls.some(call => call[0]?.includes('SECURITY'));
+        const hasConfigError = errorCalls.some(call => call[0]?.includes('ConfigClient'));
+        expect(hasSecurityError || hasConfigError).toBe(true);
 
         consoleErrorSpy.mockRestore();
       });

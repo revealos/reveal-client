@@ -21,6 +21,7 @@ import { createSessionManager, type SessionManager } from "../modules/sessionMan
 import { createDecisionClient, type DecisionClient } from "../modules/decisionClient";
 import { createTransport, type Transport } from "../modules/transport";
 import { createEventPipeline, type EventPipeline } from "../modules/eventPipeline";
+import { createConfigClient, type ConfigClient } from "../modules/configClient";
 import { setAuditLogger } from "../security/auditLogger";
 import { setErrorLogger } from "../errors/errorHandler";
 import { validateAllBackendUrls, validateHttpsUrl } from "../security/inputValidation";
@@ -134,8 +135,22 @@ export async function init(
     }
     loggerRef.logDebug("Resolved ingest endpoint", { ingestEndpoint });
 
-    // For now, create a minimal config for DetectorManager to work
-    // TODO: Replace with real ConfigClient when implemented
+    // ──────────────────────────────────────────────────────────────────────
+    // RESOLVE CONFIG ENDPOINT
+    // ──────────────────────────────────────────────────────────────────────
+    let configEndpoint: string;
+    if (options.configEndpoint && typeof options.configEndpoint === "string") {
+      configEndpoint = options.configEndpoint;
+    } else if (options.apiBase && typeof options.apiBase === "string") {
+      configEndpoint = `${options.apiBase}/config`;
+    } else {
+      configEndpoint = "https://api.reveal.io/config";
+    }
+    loggerRef.logDebug("Resolved config endpoint", { configEndpoint });
+
+    // ──────────────────────────────────────────────────────────────────────
+    // FETCH CONFIG FROM BACKEND (with fallback to minimalConfig)
+    // ──────────────────────────────────────────────────────────────────────
     const environment = (options.environment as "production" | "staging" | "development") || "development";
     
     // Environment-aware timeout defaults:
@@ -143,6 +158,7 @@ export async function init(
     // - Development: 2000ms (allows for CORS preflight + logging overhead)
     const defaultDecisionTimeout = environment === "production" ? 400 : 2000;
     
+    // Fallback minimal config (used if backend fetch fails)
     const minimalConfig: ClientConfig = {
       projectId: clientKey, // Temporary: use clientKey as projectId
       environment,
@@ -157,13 +173,68 @@ export async function init(
       ttlSeconds: 3600,
     };
 
+    // Try to fetch config from backend
+    let clientConfig: ClientConfig | null = null;
+    try {
+      // Validate config endpoint URL for HTTPS (with localhost exception)
+      const configUrlValidation = validateHttpsUrl(configEndpoint);
+      if (configUrlValidation.valid) {
+        loggerRef.logDebug("Creating ConfigClient", { endpoint: configEndpoint, environment });
+        
+        // Create ConfigClient instance
+        configClient = createConfigClient({
+          endpoint: configEndpoint,
+          clientKey: clientKey,
+          environment: environment,
+          fetchFn: typeof fetch !== "undefined" ? fetch : undefined,
+          logger: loggerRef,
+          timeoutMs: 5000,
+        });
+
+        loggerRef.logDebug("Fetching config from backend...");
+        
+        // Fetch config from backend
+        clientConfig = await configClient.getConfig();
+        if (clientConfig) {
+          loggerRef.logDebug("Config fetched from backend", { projectId: clientConfig.projectId, environment: clientConfig.environment });
+          console.log("[Reveal SDK] ✓ Config fetched from backend:", clientConfig);
+        } else {
+          loggerRef.logWarn("Failed to fetch config from backend, using fallback minimalConfig");
+          console.warn("[Reveal SDK] ⚠ Failed to fetch config from backend, using fallback minimalConfig");
+        }
+      } else {
+        loggerRef.logWarn("Config endpoint URL validation failed, using fallback minimalConfig", { error: configUrlValidation.error });
+        console.warn("[Reveal SDK] ⚠ Config endpoint URL validation failed:", configUrlValidation.error);
+      }
+    } catch (error: any) {
+      loggerRef.logWarn("Error during config fetch, using fallback minimalConfig", { error: error?.message || String(error) });
+      console.error("[Reveal SDK] ✗ Error during config fetch:", error?.message || String(error));
+      // Continue with minimalConfig fallback
+    }
+
+    // Use fetched config or fallback to minimalConfig
+    const finalConfig: ClientConfig = clientConfig || minimalConfig;
+
+    // ──────────────────────────────────────────────────────────────────────
+    // RESOLVE RELATIVE DECISION ENDPOINT TO FULL URL
+    // ──────────────────────────────────────────────────────────────────────
+    // Backend may return relative paths (e.g., "/decide"), so we need to resolve them
+    let resolvedDecisionEndpoint = finalConfig.decision.endpoint;
+    
+    // If decision endpoint is relative (starts with /), resolve it using apiBase or configEndpoint base
+    if (resolvedDecisionEndpoint.startsWith("/")) {
+      // Use apiBase if available, otherwise derive from configEndpoint
+      const baseUrl = options.apiBase || (configEndpoint ? configEndpoint.replace(/\/config.*$/, "") : "https://api.reveal.io");
+      resolvedDecisionEndpoint = `${baseUrl}${resolvedDecisionEndpoint}`;
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // SECURITY: Validate all backend URLs are HTTPS (localhost exception)
     // ──────────────────────────────────────────────────────────────────────
     // Validate ingest and decision endpoints (apiBase already validated above)
     const urlValidation = validateAllBackendUrls({
       ingestEndpoint,
-      decisionEndpoint: minimalConfig.decision.endpoint,
+      decisionEndpoint: resolvedDecisionEndpoint,
       // apiBase already validated above, don't validate again
     });
 
@@ -221,7 +292,7 @@ export async function init(
         const currentSession = sessionManager.getCurrentSession();
         if (currentSession && decisionClient) {
           const decision = await decisionClient.requestDecision(frictionSignal, {
-            projectId: minimalConfig.projectId,
+            projectId: finalConfig.projectId,
             sessionId: currentSession.id,
           });
 
@@ -300,10 +371,10 @@ export async function init(
         return;
       }
       decisionClient = createDecisionClient({
-        endpoint: minimalConfig.decision.endpoint,
-        timeoutMs: minimalConfig.decision.timeoutMs,
-        projectId: minimalConfig.projectId,
-        environment: minimalConfig.environment,
+        endpoint: resolvedDecisionEndpoint, // Use resolved endpoint (full URL)
+        timeoutMs: finalConfig.decision.timeoutMs,
+        projectId: finalConfig.projectId,
+        environment: finalConfig.environment,
         clientKey: clientKey,
         logger: loggerRef,
         transport: transport,
@@ -312,7 +383,7 @@ export async function init(
     }, loggerRef, "DecisionClient creation");
 
     detectorManager = createDetectorManager({
-      config: minimalConfig,
+      config: finalConfig,
       onFrictionSignal,
       logger: loggerRef,
     });

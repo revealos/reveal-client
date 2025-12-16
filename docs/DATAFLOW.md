@@ -29,6 +29,7 @@ flowchart LR
   subgraph CLIENT["🔒 CLIENT (Browser boundary)"]
     direction TB
     App["Host App<br/>reveal.init()<br/>reveal.track()"]
+    Config["ConfigClient<br/>(fetch config)<br/>bootstrap only"]
     Detectors["Detectors<br/>(Stall/RageClick/Backtrack)<br/>Auto-detect friction"]
     Pipeline["EventPipeline<br/>(enrich + batch events)"]
     Sanitizers["🔍 Guardrails<br/>scrubPII()<br/>scrubUrlPII()<br/>(flat payload rules)"]
@@ -36,6 +37,7 @@ flowchart LR
     Transport["🌐 Transport<br/>(single network module)<br/>validate HTTPS at init<br/>sendBatch()<br/>sendDecisionRequest()"]
     Overlay["Overlay UI<br/>(render plain-text props)"]
     
+    App --> Config
     App --> Pipeline
     Detectors --> Pipeline
     Detectors --> Decision
@@ -48,27 +50,32 @@ flowchart LR
   %% SERVER edge (abstract, just endpoints)
   subgraph SERVER_EDGE["BACKEND (outside browser)"]
     direction TB
+    Config["GET /config<br/>(ClientConfig)"]
     Ingest["POST /ingest<br/>(EventBatch)"]
     Decide["POST /decide<br/>(DecisionRequest)"]
   end
 
+  Config -- "HTTPS GET /config<br/>X-Reveal-Client-Key header" --> Config
+  Config -- "200 OK<br/>ClientConfig (plain JSON)" --> Config
   Transport -- "HTTPS POST /ingest<br/>EventBatch&lt;OutboundEvent[]&gt;" --> Ingest
   Transport -- "HTTPS POST /decide<br/>DecisionRequest" --> Decide
   Decide -- "200 OK<br/>NudgeDecision (plain JSON)" --> Transport
 
   %% Audit emphasis styling
   classDef audit fill:#fff3cd,stroke:#ff9900,stroke-width:3px,color:#111,font-weight:bold;
-  class Transport,Sanitizers audit;
+  class Transport,Sanitizers,Config audit;
 ```
 
 **Audit-visible components** (highlighted in yellow):
+- **ConfigClient**: Bootstrap config fetch (uses `fetch` directly, before Transport exists) - validates endpoint URL for HTTPS
 - **Transport**: Single auditable file for all network requests (`packages/client/src/modules/transport.ts`)
 - **Guardrails**: PII scrubbing and URL sanitization (`packages/client/src/security/dataSanitization.ts`)
 
 **Key flows:**
-1. **Event path**: Host app / Detectors → EventPipeline → Guardrails → Transport → `/ingest`
-2. **Decision path**: Detectors → DecisionClient → Guardrails → Transport → `/decide` → Overlay
-3. **Interaction path**: Overlay → EventPipeline → Guardrails → Transport → `/ingest`
+1. **Config path**: Host app → ConfigClient → `GET /config` → Backend → ClientConfig (fetched during `Reveal.init()`, before Transport is created)
+2. **Event path**: Host app / Detectors → EventPipeline → Guardrails → Transport → `POST /ingest`
+3. **Decision path**: Detectors → DecisionClient → Guardrails → Transport → `POST /decide` → Overlay
+4. **Interaction path**: Overlay → EventPipeline → Guardrails → Transport → `POST /ingest`
 
 ---
 
@@ -78,6 +85,9 @@ flowchart LR
 flowchart TD
     A[User Browser] 
     --> B[Reveal SDK]
+    B -->|Config Request| C1[ConfigClient]
+    C1 -->|HTTPS GET /config| D1[Reveal Backend - Config Service]
+    D1 -->|ClientConfig| B
     B -->|Event Payload| C[Transport Layer]
     C -->|HTTPS POST /ingest| D[Reveal Backend - Ingest Service]
     D --> E[Event Processor]
@@ -168,11 +178,13 @@ Outbound data is strictly limited to:
 ```
 
 **All outbound calls go through:**
+- `packages/client/src/modules/configClient.ts` (bootstrap only)
+  - `getConfig()` - For config fetch to `/config` endpoint (uses `fetch` directly, before Transport exists)
 - `packages/client/src/modules/transport.ts`
   - `sendBatch()` - For event batches to `/ingest` endpoint
   - `sendDecisionRequest()` - For decision requests to `/decide` endpoint
 
-This is the **single auditable file** for all network requests. No other file in the SDK may call `fetch`, `XMLHttpRequest`, or any network API. DecisionClient delegates HTTP requests to Transport.
+**Note:** ConfigClient uses `fetch` directly as a bootstrap exception (it must fetch config before Transport is created). ConfigClient validates the config endpoint URL for HTTPS before making requests. All other network requests go through Transport, which is the **single auditable file** for runtime network requests. DecisionClient delegates HTTP requests to Transport.
 
 ---
 
@@ -184,6 +196,7 @@ This diagram shows the **server-side processing flow** from event ingestion thro
 flowchart LR
   subgraph SERVER["🔒 SERVER Backend Boundary"]
     direction TB
+    Config["GET /config<br/>ClientConfig"]
     Ingest["POST /ingest<br/>EventBatch"]
     Normalize["Normalize/Validate<br/>(schema validation,<br/>flattening expectations)"]
     Store[("Event Store<br/>(persist events)")]
@@ -191,33 +204,38 @@ flowchart LR
     Decide["Decision Engine<br/>(rules/ML/experiments)"]
     Response["Return<br/>NudgeDecision JSON<br/>(no HTML, no code)"]
     
+    Config --> Response
     Ingest --> Normalize --> Store --> Features --> Decide --> Response
   end
 
   %% Client edge (abstract)
   subgraph CLIENT_EDGE["CLIENT (outside server)"]
+    ConfigClient["ConfigClient"]
     Transport["Transport"]
     Overlay["Overlay UI"]
   end
 
+  ConfigClient --> Config
   Transport --> Ingest
   Response --> Overlay
 
   %% Audit emphasis
   classDef audit fill:#fff3cd,stroke:#ff9900,stroke-width:3px,color:#111,font-weight:bold;
-  class Ingest,Normalize,Response audit;
+  class Config,Ingest,Normalize,Response audit;
 ```
 
 **Audit-visible boundaries** (highlighted in yellow):
+- **Config**: Input boundary (receives config requests, returns client-safe configuration)
 - **Ingest**: Input boundary (receives all client events)
 - **Normalize/Validate**: Guardrails (schema validation, data normalization)
 - **Response**: Output boundary (returns only plain JSON, no executable content)
 
 ## Backend Processing Details
 
-1. **Ingest** receives the event and attaches session context
-2. **Decision Engine** checks user state + friction level
-3. If needed, it returns a plain JSON nudge decision containing:
+1. **Config** receives the config request and returns client-safe configuration (projectId, environment, SDK settings, decision endpoint/timeout, templates)
+2. **Ingest** receives the event and attaches session context
+3. **Decision Engine** checks user state + friction level
+4. If needed, it returns a plain JSON nudge decision containing:
    - `nudgeId` - Unique identifier
    - `templateId` - Template type: `"tooltip" | "modal" | "banner" | "spotlight" | "inline_hint"`
    - `title` - Message title (plain text)
@@ -233,6 +251,30 @@ flowchart LR
 ---
 
 ## What Returns to the Browser
+
+### Config Response (from GET /config)
+
+The SDK receives a `ClientConfig` object:
+
+```typescript
+{
+  projectId: string,
+  environment: "production" | "staging" | "development",
+  sdk: {
+    samplingRate: number
+  },
+  decision: {
+    endpoint: string,  // May be relative path like "/decide" or full URL
+    timeoutMs: number
+  },
+  templates: any[],
+  ttlSeconds: number
+}
+```
+
+**Note:** If `decision.endpoint` is a relative path (starts with `/`), the SDK automatically resolves it to a full URL using `apiBase` before validation and use.
+
+### Nudge Decision (from POST /decide)
 
 The Overlay receives a strict JSON object:
 
@@ -264,13 +306,25 @@ sequenceDiagram
   participant U as User
   participant A as Host App
   participant SDK as Reveal SDK
+  participant CC as ConfigClient<br/>(bootstrap)
   participant D as Detectors<br/>(Stall/RageClick/Backtrack)
   participant EP as EventPipeline<br/>(enrich + batch)
   participant SEC as Guardrails<br/>(scrubPII/scrubUrlPII)
   participant T as Transport<br/>(single network module)
+  participant BC as Backend: /config
   participant BI as Backend: /ingest
   participant BD as Backend: /decide
   participant O as Overlay UI
+
+  Note over A,SDK: SDK Initialization
+  A->>SDK: reveal.init(clientKey, options)
+  SDK->>CC: fetch config
+  CC->>BC: HTTPS GET /config<br/>{X-Reveal-Client-Key header,<br/>environment query param}
+  BC-->>CC: 200 OK ClientConfig<br/>{projectId, decision.endpoint, ...}
+  CC-->>SDK: ClientConfig (or null if failed)
+  SDK->>SDK: resolve relative endpoints<br/>(if decision.endpoint is "/decide")
+  SDK->>SDK: validate all URLs (HTTPS)
+  SDK->>SDK: initialize modules
 
   Note over U,O: User interaction triggers explicit event
   U->>A: interacts
@@ -303,12 +357,15 @@ sequenceDiagram
 ```
 
 **Key transformations:**
-1. **Event enrichment**: EventPipeline adds metadata (session, location, viewport, user_agent, timestamps)
-2. **PII scrubbing**: Guardrails redact known PII keys (`email`, `phone`, `password`, etc.) and email addresses in URLs
-3. **Batching**: EventPipeline buffers events and sends in batches (periodic flush or threshold)
-4. **Decision request**: Immediate path (bypasses batching) for friction signals to enable real-time nudge delivery
+1. **Config fetch**: ConfigClient fetches client-safe configuration during initialization (before Transport exists)
+2. **Endpoint resolution**: Relative decision endpoints from backend config are resolved to full URLs using `apiBase`
+3. **Event enrichment**: EventPipeline adds metadata (session, location, viewport, user_agent, timestamps)
+4. **PII scrubbing**: Guardrails redact known PII keys (`email`, `phone`, `password`, etc.) and email addresses in URLs
+5. **Batching**: EventPipeline buffers events and sends in batches (periodic flush or threshold)
+6. **Decision request**: Immediate path (bypasses batching) for friction signals to enable real-time nudge delivery
 
 **Data formats:**
+- **ClientConfig**: `{projectId, environment, sdk: {samplingRate}, decision: {endpoint, timeoutMs}, templates, ttlSeconds}`
 - **EventBatch**: `{projectId, sessionId, event: OutboundEvent[]}`
 - **DecisionRequest**: `{projectId, sessionId, friction: FrictionSignal}`
 - **NudgeDecision**: `{nudgeId, templateId, title?, body?, ctaText?, quadrant?, ...}`
@@ -323,7 +380,7 @@ sequenceDiagram
 
 ✅ **No HTML or JS returned from the backend** - All nudge content is plain text in JSON
 
-✅ **All network interactions flow through one auditable file** - `packages/client/src/modules/transport.ts`
+✅ **All network interactions flow through one auditable file** - `packages/client/src/modules/transport.ts` (runtime requests). ConfigClient uses `fetch` directly as bootstrap exception (validates endpoint URL before requests).
 
 ✅ **All decisions rendered via safe React components** - No HTML injection, no code execution
 
@@ -331,3 +388,4 @@ sequenceDiagram
 
 ✅ **Single transport layer** - All network calls (ingest and decision requests) go through the same transport module
 
+✅ **Config fetch is secure** - ConfigClient validates endpoint URL for HTTPS before fetching, falls back gracefully if fetch fails

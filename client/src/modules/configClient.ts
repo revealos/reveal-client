@@ -17,9 +17,9 @@
  * @module modules/configClient
  */
 
-// TODO: Import types
-// TODO: Import security utilities
-// TODO: Import logger
+import type { ClientConfig } from "../types/config";
+import type { Logger } from "../utils/logger";
+import { validateHttpsUrl } from "../security/inputValidation";
 
 /**
  * Configuration options for ConfigClient
@@ -27,30 +27,13 @@
 export interface ConfigClientOptions {
   endpoint: string;
   clientKey: string;
-  fetchJson: (url: string, options?: any) => Promise<any>;
-  logger?: any;
-  ttlSeconds?: number;
-  validateSSL?: boolean;
+  environment?: "production" | "staging" | "development";
+  fetchFn?: typeof fetch;
+  logger?: Logger;
   timeoutMs?: number;
-  maxRetries?: number;
 }
 
-/**
- * Client-safe configuration returned by the backend
- */
-export interface ClientConfig {
-  projectId: string;
-  environment: "production" | "staging" | "development";
-  sdk: {
-    samplingRate: number;
-  };
-  decision: {
-    endpoint: string;
-    timeoutMs: number;
-  };
-  templates: any[];
-  ttlSeconds: number;
-}
+// ClientConfig is imported from types/config
 
 /**
  * ConfigClient interface
@@ -71,27 +54,210 @@ export interface ConfigClient {
 export function createConfigClient(
   options: ConfigClientOptions
 ): ConfigClient {
-  // TODO: Validate options
-  // TODO: Apply secure defaults
-  // TODO: Initialize cache
-  // TODO: Return ConfigClient implementation
-  
+  const {
+    endpoint,
+    clientKey,
+    environment = "development",
+    fetchFn = typeof fetch !== "undefined" ? fetch : undefined,
+    logger,
+    timeoutMs = 5000,
+  } = options;
+
+  // Validate options
+  if (!endpoint || typeof endpoint !== "string") {
+    throw new Error("ConfigClient: endpoint is required and must be a string");
+  }
+  if (!clientKey || typeof clientKey !== "string") {
+    throw new Error("ConfigClient: clientKey is required and must be a string");
+  }
+
+  // Default to global fetch if available
+  const finalFetchFn = fetchFn || (typeof fetch !== "undefined" ? fetch : undefined);
+  if (!finalFetchFn || typeof finalFetchFn !== "function") {
+    throw new Error("ConfigClient: fetchFn is required and must be a function");
+  }
+
+  // Validate endpoint URL for HTTPS (with localhost exception)
+  const urlValidation = validateHttpsUrl(endpoint);
+  if (!urlValidation.valid) {
+    throw new Error(`ConfigClient: ${urlValidation.error}`);
+  }
+
+  // Cache state
+  let cachedConfig: ClientConfig | null = null;
+  let lastFetchTime: number | null = null;
+  let fetchCount = 0;
+  let cacheExpiresAt: number = 0;
+
+  /**
+   * Check if cached config is still valid
+   */
+  function isCacheValid(): boolean {
+    if (!cachedConfig || cacheExpiresAt === 0) {
+      return false;
+    }
+    return Date.now() < cacheExpiresAt;
+  }
+
+  /**
+   * Validate config structure matches ClientConfig interface
+   */
+  function validateConfig(data: any): data is ClientConfig {
+    if (!data || typeof data !== "object") {
+      return false;
+    }
+
+    // Check required fields
+    if (typeof data.projectId !== "string") return false;
+    if (!["production", "staging", "development"].includes(data.environment)) return false;
+    if (!data.sdk || typeof data.sdk !== "object") return false;
+    if (typeof data.sdk.samplingRate !== "number") return false;
+    if (!data.decision || typeof data.decision !== "object") return false;
+    if (typeof data.decision.endpoint !== "string") return false;
+    if (typeof data.decision.timeoutMs !== "number") return false;
+    if (!Array.isArray(data.templates)) return false;
+    if (typeof data.ttlSeconds !== "number") return false;
+
+    return true;
+  }
+
   return {
     getConfig: async () => {
-      // TODO: Implement config fetching
-      return null;
+      try {
+        fetchCount++;
+
+        // Check cache first
+        if (isCacheValid()) {
+          try {
+            logger?.logDebug("ConfigClient: returning cached config");
+          } catch {
+            // Ignore logger errors
+          }
+          return cachedConfig;
+        }
+
+        // Build config URL with environment query param
+        // Endpoint should already be the full /config URL (constructed by entryPoint)
+        // Just add query param
+        const separator = endpoint.includes("?") ? "&" : "?";
+        const configUrl = `${endpoint}${separator}environment=${encodeURIComponent(environment)}`;
+
+        try {
+          logger?.logDebug("ConfigClient: fetching config", { url: configUrl });
+        } catch {
+          // Ignore logger errors
+        }
+
+        // Create abort controller for timeout
+        const abortController = typeof AbortController !== "undefined" ? new AbortController() : null;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+        if (abortController) {
+          timeoutId = setTimeout(() => {
+            if (abortController.abort) {
+              abortController.abort();
+            }
+          }, timeoutMs);
+        }
+
+        try {
+          // Make GET request
+          const response = await finalFetchFn(configUrl, {
+            method: "GET",
+            headers: {
+              "X-Reveal-Client-Key": clientKey,
+              "Content-Type": "application/json",
+            },
+            signal: abortController?.signal,
+          });
+
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+
+          // Check HTTP status
+          if (!response.ok) {
+            const errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            try {
+              logger?.logError("ConfigClient: HTTP error", { status: response.status, statusText: response.statusText });
+            } catch {
+              // Ignore logger errors
+            }
+            return null;
+          }
+
+          // Parse JSON response
+          const data = await response.json();
+
+          // Validate config structure
+          if (!validateConfig(data)) {
+            try {
+              logger?.logError("ConfigClient: invalid config structure", { data });
+            } catch {
+              // Ignore logger errors
+            }
+            return null;
+          }
+
+          // Update cache
+          cachedConfig = data;
+          lastFetchTime = Date.now();
+          const ttlSeconds = data.ttlSeconds || 60;
+          cacheExpiresAt = Date.now() + (ttlSeconds * 1000);
+
+          try {
+            logger?.logDebug("ConfigClient: config fetched successfully", { projectId: data.projectId, environment: data.environment });
+          } catch {
+            // Ignore logger errors
+          }
+
+          return cachedConfig;
+        } catch (error: any) {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+
+          // Handle abort (timeout)
+          if (error?.name === "AbortError" || (error instanceof Error && error.message.includes("aborted"))) {
+            try {
+              logger?.logError("ConfigClient: request timeout", { timeoutMs });
+            } catch {
+              // Ignore logger errors
+            }
+            return null;
+          }
+
+          // Handle other errors
+          try {
+            logger?.logError("ConfigClient: fetch error", { error: error?.message || String(error) });
+          } catch {
+            // Ignore logger errors
+          }
+          return null;
+        }
+      } catch (error: any) {
+        try {
+          logger?.logError("ConfigClient: unexpected error", { error: error?.message || String(error) });
+        } catch {
+          // Ignore logger errors
+        }
+        return null;
+      }
     },
+
     getCachedConfig: () => {
-      // TODO: Return cached config
+      if (isCacheValid()) {
+        return cachedConfig;
+      }
       return null;
     },
+
     getLastFetchTime: () => {
-      // TODO: Return last fetch timestamp
-      return null;
+      return lastFetchTime;
     },
+
     getFetchCount: () => {
-      // TODO: Return fetch count
-      return 0;
+      return fetchCount;
     },
   };
 }

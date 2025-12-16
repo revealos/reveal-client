@@ -12,7 +12,7 @@ The Reveal SDK is a lightweight, framework-agnostic library that detects user fr
 - **EntryPoint**: Main orchestration layer - wires together all modules and provides public API
 
 ### Modules
-- **ConfigClient**: Fetches client-safe configuration (future: will fetch from backend)
+- **ConfigClient**: Fetches client-safe configuration from backend `/config` endpoint during SDK initialization. Falls back to minimalConfig if fetch fails.
 - **SessionManager**: Manages session lifecycle and context
 - **EventPipeline**: Buffers and sends events to backend
 - **Transport**: HTTP transport layer for event batches
@@ -40,10 +40,15 @@ Here's how the SDK works at runtime:
 1. App Startup
    └─> Reveal.init(clientKey, options?)
        ├─> Initialize Logger
+       ├─> Fetch Config from Backend (ConfigClient)
+       │   └─> GET /config endpoint (bootstrap, before Transport exists)
+       │   └─> Falls back to minimalConfig if fetch fails
+       ├─> Resolve relative decision endpoints (if backend config returns relative paths)
+       ├─> Validate all backend URLs (HTTPS enforcement)
        ├─> Initialize SessionManager (creates session)
        ├─> Initialize Transport (HTTP client)
        ├─> Initialize EventPipeline (event buffering)
-       ├─> Initialize DecisionClient (decision requests)
+       ├─> Initialize DecisionClient (decision requests, uses resolved endpoint)
        └─> Initialize DetectorManager (friction detection)
            └─> Start detectors (StallDetector, RageClickDetector, BacktrackDetector)
 
@@ -109,4 +114,3 @@ await Reveal.init('client-key');
 import { useNudgeDecision } from '@reveal/client'; // or '@reveal/overlay-react'
 import { OverlayManager } from '@reveal/overlay-react';
 ```
-

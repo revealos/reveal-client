@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **ConfigClient Implementation**: SDK now fetches configuration from backend `/config` endpoint
+  - Fetches client-safe configuration during SDK initialization
+  - Caches config with TTL (from response `ttlSeconds` or default 60s)
+  - Falls back to minimalConfig if fetch fails (maintains backward compatibility)
+  - Config endpoint resolution: `configEndpoint` → `${apiBase}/config` → `https://api.reveal.io/config`
+  - Includes `X-Reveal-Client-Key` header and `environment` query param
+  - Validates endpoint URL for HTTPS (with localhost exception)
+  - Comprehensive error handling: network errors, HTTP errors, invalid responses all handled gracefully
+  - SDK continues to work even if backend is unavailable (uses fallback config)
+  - Implementation: `modules/configClient.ts` with full caching and validation
+  - Comprehensive test coverage: 29 unit tests for ConfigClient, integration tests in index.test.ts
 - **HTTPS URL Validation at Initialization**: Security hard requirement enforcement
   - All backend URLs (`ingestEndpoint`, `decisionEndpoint`, `apiBase`) are validated for HTTPS at SDK initialization
   - SDK disables itself (`isDisabled = true`) if any non-HTTPS URL is detected

@@ -57,6 +57,13 @@ No other file may call `fetch`, `XMLHttpRequest`, or any network API. This ensur
 - Network security policies are consistently applied
 - Transport layer can be easily reviewed by security teams
 
+**Exception:** `ConfigClient` (`packages/client/src/modules/configClient.ts`) uses `fetch` directly for the bootstrap config fetch during SDK initialization. This is necessary because ConfigClient must fetch configuration before Transport is created. ConfigClient:
+- Validates the config endpoint URL for HTTPS (with localhost exception) before making requests
+- Uses the same security validation functions as the rest of the SDK
+- Only fetches client-safe configuration (no executable code)
+- Falls back gracefully if the fetch fails
+- This is the **only** exception to the "single transport file" rule
+
 ### 2. No automatic PII collection
 
 The SDK never reads:
@@ -159,6 +166,7 @@ This satisfies the **"blast radius containment"** requirement for governance tea
 - Single transport layer enforcement
 - Plain-text rendering in overlay components
 - Strict JSON schema validation
+- ConfigClient bootstrap fetch with HTTPS validation
 
 #### 🚧 In Progress
 - PII scrubbing implementation (`src/security/dataSanitization.ts`)
@@ -209,11 +217,13 @@ All inputs to the SDK are validated and sanitized to prevent injection attacks.
 - **SSL certificate validation** is enabled by default
 - **Client keys are not secrets** (identify project only)
 - **Single transport layer** - All network calls go through one auditable file
+- **ConfigClient bootstrap exception** - Uses `fetch` directly but validates endpoint URL for HTTPS before requests
 
 **Status**: Validated at initialization (`entryPoint.ts`) and enforced in transport layer.
 
 **Location**: 
 - Validation: `packages/client/src/core/entryPoint.ts` (init time)
+- ConfigClient: `packages/client/src/modules/configClient.ts` (bootstrap config fetch)
 - Transport: `packages/client/src/modules/transport.ts` (runtime)
 
 ---
@@ -233,4 +243,3 @@ Structured audit logging is available for compliance requirements.
 **Status**: Interface defined, full implementation in progress.
 
 **See also**: [AUDIT_AI.md](./AUDIT_AI.md) for AI-assisted security audits.
-

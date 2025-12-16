@@ -17,14 +17,17 @@ Reveal.init(clientKey: string, options?: InitOptions): Promise<void>
 | Option | Type | Default | Who Sets It? | Description |
 |--------|------|---------|--------------|-------------|
 | `clientKey` | `string` | - | **You (required)** | Your project's client key from Reveal dashboard |
-| `apiBase` | `string` | `"https://api.reveal.io"` | You (if self-hosting) | Backend API base URL. Only needed if self-hosting or using non-default URL |
+| `apiBase` | `string` | `"https://api.reveal.io"` | You (if self-hosting) | Backend API base URL. Used to construct config, ingest, and decision endpoints. Only needed if self-hosting or using non-default URL |
+| `configEndpoint` | `string` | `"{apiBase}/config"` | You (if custom) | Explicit config endpoint. Overrides `apiBase` for config fetch. SDK fetches client-safe configuration from this endpoint during initialization |
 | `ingestEndpoint` | `string` | `"{apiBase}/ingest"` | You (if custom) | Explicit event ingestion endpoint. Overrides `apiBase` |
-| `decisionEndpoint` | `string` | `"{apiBase}/decide"` | You (if custom) | Explicit decision endpoint. Overrides `apiBase` |
-| `decisionTimeoutMs` | `number` | `400` (production), `2000` (development) | You (if custom) | Timeout for decision requests in milliseconds. Defaults are environment-aware: 400ms for production (realistic for network + backend processing), 2000ms for development (allows CORS preflight + logging overhead) |
+| `decisionEndpoint` | `string` | `"{apiBase}/decide"` | You (if custom) | Explicit decision endpoint. Overrides `apiBase`. **Note:** If backend config returns a relative path (e.g., `/decide`), SDK automatically resolves it using `apiBase` |
+| `decisionTimeoutMs` | `number` | `400` (production), `2000` (development) | You (if custom) | Timeout for decision requests in milliseconds. Defaults are environment-aware: 400ms for production (realistic for network + backend processing), 2000ms for development (allows for CORS preflight + logging overhead) |
 | `debug` | `boolean` | `false` | You (dev only) | Enable debug logging. Set to `true` in development |
-| `environment` | `string` | `"development"` | You | Environment: `"production"` \| `"staging"` \| `"development"` |
+| `environment` | `string` | `"development"` | You | Environment: `"production"` \| `"staging"` \| `"development"`. Used as query param when fetching config |
 
-**Security Note:** All backend URLs (`ingestEndpoint`, `decisionEndpoint`, `apiBase`) must use HTTPS protocol. The SDK will disable itself at initialization if any non-HTTPS URL is detected. Exception: `http://localhost` and `http://127.0.0.1` are allowed for local development only.
+**Security Note:** All backend URLs (`configEndpoint`, `ingestEndpoint`, `decisionEndpoint`, `apiBase`) must use HTTPS protocol. The SDK will disable itself at initialization if any non-HTTPS URL is detected. Exception: `http://localhost` and `http://127.0.0.1` are allowed for local development only.
+
+**Config Fetch Behavior:** During initialization, the SDK attempts to fetch configuration from the backend `/config` endpoint. If the fetch succeeds, the SDK uses the backend config (including `decision.endpoint` which may be a relative path like `/decide`). If the fetch fails, the SDK gracefully falls back to a minimalConfig constructed from initialization options, ensuring backward compatibility. Relative decision endpoints from backend config are automatically resolved to full URLs using `apiBase` before validation.
 
 **Note:** The backend **decides** which nudges to show, but the SDK still needs to know **where** to send events and requests. In production apps, you typically only set `clientKey` (and optionally `apiBase` if self-hosting). The harness app sets all options because it mocks backend endpoints for local testing.
 
@@ -367,4 +370,3 @@ Reveal.track('product', 'event', {
 ```
 
 See `src/types/` for complete type definitions.
-
