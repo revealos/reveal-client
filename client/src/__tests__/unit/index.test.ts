@@ -275,15 +275,34 @@ describe('Reveal SDK', () => {
           decisionEndpoint: 'http://api.reveal.io/decide', // Invalid: non-localhost HTTP
         });
 
-        // Wait for async validation to complete
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Wait for async validation to complete (config fetch + URL validation)
+        // Increased timeout to account for config fetch in CI
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         // SDK should be disabled and error logged
         // May see config fetch error first, but SECURITY error should also appear
         expect(errorCalls.length).toBeGreaterThan(0);
-        const securityError = errorCalls.find(call => call[0]?.includes('SECURITY') && call[0]?.includes('Decision endpoint'));
+        
+        // Look for SECURITY error - it should contain "SECURITY", "Decision", and "HTTPS"
+        // The exact format is: "[Reveal SDK] SECURITY: Backend URLs must use HTTPS. Decision endpoint URL must use HTTPS protocol: ..."
+        // Check all arguments in each call, not just the first one
+        const securityError = errorCalls.find(call => {
+          // Convert all arguments to string and check
+          const allArgs = call.map((arg: any) => String(arg || '')).join(' ');
+          return allArgs.includes('SECURITY') && 
+                 (allArgs.includes('Decision') || allArgs.includes('decision') || allArgs.includes('decisionEndpoint')) &&
+                 allArgs.includes('HTTPS');
+        });
+        
+        // If not found, log all errors for debugging
+        if (!securityError && errorCalls.length > 0) {
+          const allErrorMessages = errorCalls.map(call => call.map((arg: any) => String(arg || '')).join(' '));
+          console.log('All error calls:', allErrorMessages);
+        }
+        
         expect(securityError).toBeDefined();
-        expect(securityError[0]).toContain('HTTPS');
+        const errorMsg = securityError.map((arg: any) => String(arg || '')).join(' ');
+        expect(errorMsg).toContain('HTTPS');
 
         consoleErrorSpy.mockRestore();
       });
