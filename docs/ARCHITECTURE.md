@@ -40,11 +40,12 @@ Here's how the SDK works at runtime:
 1. App Startup
    └─> Reveal.init(clientKey, options?)
        ├─> Initialize Logger
-       ├─> Fetch Config from Backend (ConfigClient)
-       │   └─> GET /config endpoint (bootstrap, before Transport exists)
-       │   └─> Falls back to minimalConfig if fetch fails
-       ├─> Resolve relative decision endpoints (if backend config returns relative paths)
-       ├─> Validate all backend URLs (HTTPS enforcement)
+       ├─> Resolve config endpoint (configEndpoint → apiBase/config → default)
+       ├─> Fetch config from backend (ConfigClient)
+       │   └─> If fetch succeeds: use backend config
+       │   └─> If fetch fails: fall back to minimalConfig from options
+       ├─> Resolve relative decision endpoints (if any) using apiBase
+       ├─> Validate all backend URLs (HTTPS, localhost exception)
        ├─> Initialize SessionManager (creates session)
        ├─> Initialize Transport (HTTP client)
        ├─> Initialize EventPipeline (event buffering)
