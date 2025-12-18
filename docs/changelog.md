@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Decision Building (buildDecision)**: Backend now builds `WireNudgeDecision` from matched templates with complete field mapping. Includes unique `nudgeId` generation, content extraction (title, body, ctaText), template type mapping, slotId from template position (with fallback), frictionType inclusion, and analytics metadata in `extra` field (`_treatment`, `_templateId`, `_decisionId`). Handles all edge cases gracefully (missing content, null position/quadrant, all template types).
 - **Nudge Active State Management**: SDK now tracks when a nudge is active and prevents multiple nudges from appearing simultaneously. Decision requests are blocked while a nudge is visible, and a 2-second cooldown period after dismissal prevents immediate re-triggering. Friction events continue to be tracked for analytics even when decision requests are blocked.
 - **Backend State Monitoring**: Decision requests now include `isNudgeActive` flag for backend monitoring and edge case detection. Backend logs this state in `DecisionController` and `NudgeDecisionService` for observability.
 - **Backend Eligibility Checks**: Backend now enforces server-side eligibility rules based on recent `nudge_shown` events per session. Includes cooldown (3 minutes between nudges) and per-session daily cap (5 nudges per 24 hours). Eligibility checks query the `events` table directly and work independently of SessionService.

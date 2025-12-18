@@ -258,6 +258,10 @@ export async function init(
       return; // Exit early, no modules initialized
     }
 
+    // STEP: Initialize anonymousId (persistent user identifier)
+    // Must be defined before onFrictionSignal so it's available in the closure
+    const anonymousId = getOrCreateAnonymousId();
+
     // STEP 6: DetectorManager – friction detection
     // Friction signals may include semantic IDs in extra:
     // - For "stall": stall_ms (number) - stall duration in milliseconds
@@ -322,6 +326,7 @@ export async function init(
           const decision = await decisionClient.requestDecision(frictionSignal, {
             projectId: finalConfig.projectId,
             sessionId: currentSession.id,
+            anonymousId: anonymousId, // Persistent user identifier for treatment assignment
             isNudgeActive, // Send state to backend for monitoring
           });
 
@@ -338,7 +343,7 @@ export async function init(
     sessionManager = createSessionManager({ logger: loggerRef });
 
     // STEP: Initialize event transformation (convert BaseEvent to backend format)
-    const anonymousId = getOrCreateAnonymousId();
+    // anonymousId already defined above (before onFrictionSignal)
     const sdkVersion = "0.1.0"; // TODO: Read from package.json
     const transformEvent = (baseEvent: BaseEvent) => {
       return transformBaseEventToBackendFormat(baseEvent, {

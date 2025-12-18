@@ -41,6 +41,7 @@ export interface DecisionClientOptions {
 export interface DecisionContext {
   projectId: string;
   sessionId: string;
+  anonymousId?: string; // Optional: persistent user identifier for treatment assignment (sticky treatment)
   isNudgeActive?: boolean; // Optional: indicates if a nudge is currently active (for backend monitoring)
 }
 
@@ -172,6 +173,10 @@ export function createDecisionClient(
 
       // Session identifier
       sessionId: context.sessionId,
+
+      // Persistent user identifier for treatment assignment (sticky treatment)
+      // When stickyTreatment is true, this ensures same user gets same treatment across sessions
+      anonymousId: context.anonymousId,
 
       // Friction signal (canonical shape matching SDK FrictionSignal)
       // SECURITY: Scrub PII from friction.extra before sending
