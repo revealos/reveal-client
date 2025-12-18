@@ -109,10 +109,10 @@ describe('EventPipeline', () => {
       // Verify session manager was called
       expect(mockSessionManager.getCurrentSession).toHaveBeenCalled();
       
-      // Verify debug log was called
+      // Verify debug log was called (now includes flushImmediately parameter)
       expect(mockLogger.logDebug).toHaveBeenCalledWith(
         'EventPipeline: capturing event',
-        { kind: 'product', name: 'test_event' }
+        expect.objectContaining({ kind: 'product', name: 'test_event' })
       );
     });
 
@@ -214,6 +214,31 @@ describe('EventPipeline', () => {
       
       // Transport should have been called (flush was triggered)
       expect(mockTransport.sendBatch).toHaveBeenCalled();
+    });
+
+    it('should immediately flush friction events when flushImmediately=true', async () => {
+      // Capture a friction event with immediate flush
+      pipeline.captureEvent('friction', 'friction_stall', {}, true);
+      
+      // Wait for async flush
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      expect(mockTransport.sendBatch).toHaveBeenCalled();
+      const sentEvents = (mockTransport.sendBatch as any).mock.calls[0][0] as BaseEvent[];
+      expect(sentEvents.length).toBe(1);
+      expect(sentEvents[0].kind).toBe('friction');
+      expect(sentEvents[0].name).toBe('friction_stall');
+    });
+
+    it('should not immediately flush when flushImmediately=false', async () => {
+      // Capture an event without immediate flush
+      pipeline.captureEvent('product', 'test_event', {}, false);
+      
+      // Wait a bit
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // Should not flush yet (batch size not reached)
+      expect(mockTransport.sendBatch).not.toHaveBeenCalled();
     });
 
     it('should ignore events after destroy', () => {
@@ -347,6 +372,30 @@ describe('EventPipeline', () => {
           bufferLength: 1,
         }
       );
+    });
+
+    it('should sort events so friction events come before nudge events', async () => {
+      // Add events in wrong order: nudge first, then friction
+      pipeline.captureEvent('nudge', 'nudge_shown', { nudgeId: 'n1' });
+      pipeline.captureEvent('friction', 'friction_stall', {});
+      pipeline.captureEvent('product', 'product_event', {});
+      
+      await pipeline.flush(true);
+      
+      expect(mockTransport.sendBatch).toHaveBeenCalled();
+      const sentEvents = (mockTransport.sendBatch as any).mock.calls[0][0] as BaseEvent[];
+      
+      // Friction should come first, then others
+      expect(sentEvents[0].kind).toBe('friction');
+      expect(sentEvents[0].name).toBe('friction_stall');
+      
+      // Find positions of other events
+      const nudgeIndex = sentEvents.findIndex(e => e.kind === 'nudge');
+      const productIndex = sentEvents.findIndex(e => e.kind === 'product');
+      
+      // Both should come after friction
+      expect(nudgeIndex).toBeGreaterThan(0);
+      expect(productIndex).toBeGreaterThan(0);
     });
   });
 

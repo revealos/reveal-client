@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Nudge Active State Management**: SDK now tracks when a nudge is active and prevents multiple nudges from appearing simultaneously. Decision requests are blocked while a nudge is visible, and a 2-second cooldown period after dismissal prevents immediate re-triggering. Friction events continue to be tracked for analytics even when decision requests are blocked.
+- **Backend State Monitoring**: Decision requests now include `isNudgeActive` flag for backend monitoring and edge case detection. Backend logs this state in `DecisionController` and `NudgeDecisionService` for observability.
+- **Event Transformation**: SDK now automatically transforms `BaseEvent` format to backend `EventModelContract.Event` format before sending to `/ingest` endpoint. This ensures events are properly formatted for backend validation and storage.
+- **Anonymous ID Management**: Added persistent anonymous user identification via `anonymousId` utility. Anonymous ID is stored in `localStorage` and persists across browser sessions for user tracking.
+- **EventTransformer Module**: New module (`packages/client/src/modules/eventTransformer.ts`) that converts SDK internal event format to backend format, including field name mapping, timestamp conversion, and page context extraction.
+- **Backend Event Format**: Events now include required backend fields: `event_id` (UUID), `event_kind`, `event_type`, `anonymous_id`, `sdk_version`, and proper ISO 8601 timestamps.
+
+### Changed
+- **Transport Module**: Now accepts optional `transformEvent` function to transform events before sending. If provided, events are transformed to backend format. If not provided, events are sent as-is (backward compatibility).
+- **Event Format**: Events sent to `/ingest` now use backend format (`event_kind`, `event_type`, ISO timestamps) instead of SDK internal format (`kind`, `name`, numeric timestamps). This is an internal change - SDK API (`Reveal.track()`) remains unchanged.
+
+### Fixed
+- **Multiple Nudges Issue**: Fixed issue where multiple nudges could appear in sequence without dismissal events, caused by meaningful activity resetting the stall detector while a nudge was visible. SDK now blocks decision requests when a nudge is active.
+- **Event Ordering Race Condition**: Fixed rare race condition where `nudge_shown` events could appear before `friction` events in the database when both events were captured in the same millisecond. Friction events now trigger immediate flush to preserve causality (friction → decision → nudge), and events are sorted during batch flush to ensure friction events always precede nudge events.
+- Events from harness app are now properly ingested by backend and stored in Supabase `events` table.
+- Friction events now include required fields (`selector`, `page_url`, `friction_type`) extracted from friction signal payload. Added fallback to use `context` field or `"__global__"` when selector is null for global friction events.
+
+## [Unreleased]
+
+### Added
 - **ConfigClient Implementation**: SDK now fetches configuration from backend `/config` endpoint
   - Fetches client-safe configuration during SDK initialization
   - Caches config with TTL (from response `ttlSeconds` or default 60s)

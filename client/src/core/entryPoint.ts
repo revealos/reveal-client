@@ -25,6 +25,9 @@ import { createConfigClient, type ConfigClient } from "../modules/configClient";
 import { setAuditLogger } from "../security/auditLogger";
 import { setErrorLogger } from "../errors/errorHandler";
 import { validateAllBackendUrls, validateHttpsUrl } from "../security/inputValidation";
+import { getOrCreateAnonymousId } from "../utils/anonymousId";
+import { transformBaseEventToBackendFormat, type PageContext } from "../modules/eventTransformer";
+import type { BaseEvent } from "../types/events";
 import type { FrictionSignal } from "../types/friction";
 import type { ClientConfig } from "../types/config";
 import type { WireNudgeDecision } from "../types/decisions";
@@ -48,6 +51,14 @@ let nudgeSubscribers: Array<(decision: WireNudgeDecision) => void> = [];
 
 // Track last decision ID for deduplication
 let lastDecisionId: string | null = null;
+
+// Track if a nudge is currently active/visible (prevents multiple nudges)
+let isNudgeActive = false;
+
+// Track cooldown period after nudge dismissal (prevents immediate re-triggering)
+// Cooldown duration: 2 seconds (gives backend time to process dismissal event)
+const NUDGE_DISMISSAL_COOLDOWN_MS = 2000;
+let nudgeDismissalCooldownUntil: number | null = null;
 
 /**
  * Initialize the Reveal SDK
@@ -273,6 +284,8 @@ export async function init(
         logger?.logDebug("Friction signal received", frictionSignal);
 
         // Emit friction event to pipeline
+        // CRITICAL: flushImmediately=true ensures friction events are sent before nudge events
+        // This preserves causality: friction → decision → nudge
         eventPipeline.captureEvent(
           "friction",
           `friction_${frictionSignal.type}`,
@@ -280,7 +293,9 @@ export async function init(
             page_url: frictionSignal.pageUrl,
             selector: frictionSignal.selector,
             ...frictionSignal.extra,
-          }
+            type: frictionSignal.type, // Set type AFTER spread to ensure it's not overwritten
+          },
+          true // flushImmediately: ensure friction events are sent before nudge events
         );
 
         // Mark activity for session idle handling
@@ -288,15 +303,30 @@ export async function init(
           sessionManager.markActivity();
         }
 
-        // Request decision from backend
+        // Request decision from backend (only if no nudge is currently active and cooldown has passed)
+        // This prevents multiple nudges from appearing when user interacts while a nudge is visible
+        const isInCooldown = nudgeDismissalCooldownUntil !== null && now < nudgeDismissalCooldownUntil;
+        
+        if (isNudgeActive || isInCooldown) {
+          logger?.logDebug("Skipping decision request - nudge already active or in cooldown", {
+            frictionType: frictionSignal.type,
+            isNudgeActive,
+            isInCooldown,
+            cooldownRemainingMs: isInCooldown ? nudgeDismissalCooldownUntil! - now : 0,
+          });
+          return;
+        }
+
         const currentSession = sessionManager.getCurrentSession();
         if (currentSession && decisionClient) {
           const decision = await decisionClient.requestDecision(frictionSignal, {
             projectId: finalConfig.projectId,
             sessionId: currentSession.id,
+            isNudgeActive, // Send state to backend for monitoring
           });
 
           if (decision) {
+            isNudgeActive = true; // Mark nudge as active
             notifyNudgeSubscribers(decision);
           }
         }
@@ -307,12 +337,28 @@ export async function init(
     // STEP: Initialize SessionManager (provides session context for decisions and events)
     sessionManager = createSessionManager({ logger: loggerRef });
 
+    // STEP: Initialize event transformation (convert BaseEvent to backend format)
+    const anonymousId = getOrCreateAnonymousId();
+    const sdkVersion = "0.1.0"; // TODO: Read from package.json
+    const transformEvent = (baseEvent: BaseEvent) => {
+      return transformBaseEventToBackendFormat(baseEvent, {
+        anonymousId,
+        sdkVersion,
+        getPageContext: (): PageContext => ({
+          url: typeof window !== "undefined" ? window.location.href : null,
+          title: typeof document !== "undefined" ? document.title : null,
+          referrer: typeof document !== "undefined" ? document.referrer : null,
+        }),
+      });
+    };
+
     // STEP: Initialize Transport (HTTP transport for event batches)
     safeTry(() => {
       transport = createTransport({
         endpointUrl: ingestEndpoint,
         clientKey: clientKey,
         logger: loggerRef,
+        transformEvent,
       });
       loggerRef.logDebug("Transport initialized", { endpointUrl: ingestEndpoint });
     }, loggerRef, "Transport creation");
@@ -451,6 +497,19 @@ export function track(
     return;
   }
 
+  // Track nudge dismissal/click to reset active flag and set cooldown
+  // This allows new friction detection after nudge is dismissed, with a brief cooldown
+  // to prevent immediate re-triggering while backend processes the dismissal event
+  if (eventKind === "nudge" && (eventType === "nudge_dismissed" || eventType === "nudge_clicked")) {
+    isNudgeActive = false;
+    nudgeDismissalCooldownUntil = Date.now() + NUDGE_DISMISSAL_COOLDOWN_MS;
+    logger?.logDebug("Nudge dismissed/clicked - resuming friction detection after cooldown", {
+      eventType,
+      nudgeId: properties?.nudgeId,
+      cooldownMs: NUDGE_DISMISSAL_COOLDOWN_MS,
+    });
+  }
+
   eventPipeline.captureEvent(
     eventKind as EventKind,
     eventType,
@@ -506,6 +565,8 @@ function notifyNudgeSubscribers(decision: WireNudgeDecision) {
   }
 
   lastDecisionId = decision.nudgeId;
+  isNudgeActive = true; // Mark nudge as active when notifying subscribers
+  nudgeDismissalCooldownUntil = null; // Clear any cooldown when new nudge is shown
 
   nudgeSubscribers.forEach((handler) => {
     safeTry(() => handler(decision), logger || undefined, "nudgeSubscriber");

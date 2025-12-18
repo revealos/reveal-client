@@ -41,6 +41,7 @@ export interface DecisionClientOptions {
 export interface DecisionContext {
   projectId: string;
   sessionId: string;
+  isNudgeActive?: boolean; // Optional: indicates if a nudge is currently active (for backend monitoring)
 }
 
 /**
@@ -182,6 +183,9 @@ export function createDecisionClient(
         timestamp: signal.timestamp,
         extra: signal.extra ? scrubPII(signal.extra) : {},
       },
+
+      // Client state for backend monitoring (helps detect edge cases)
+      isNudgeActive: context.isNudgeActive ?? false,
     };
   }
 

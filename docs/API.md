@@ -61,6 +61,15 @@ Reveal.track(
 ): void
 ```
 
+**Note:** Events are automatically transformed from SDK internal format (`BaseEvent`) to backend format (`EventModelContract.Event`) before sending to the `/ingest` endpoint. This transformation includes:
+- Field name mapping (`kind` → `event_kind`, `name` → `event_type`)
+- Timestamp conversion (number → ISO 8601 string)
+- Addition of required fields (`event_id`, `anonymous_id`, `sdk_version`)
+- Page context extraction (`page_url`, `page_title`, `referrer`)
+- Friction event special handling (extracts `selector`, `page_url`, `friction_type` from payload)
+
+The SDK API (`Reveal.track()`) remains unchanged - transformation is handled internally.
+
 **Examples:**
 
 ```typescript

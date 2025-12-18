@@ -338,8 +338,9 @@ sequenceDiagram
 
   Note over SDK,O: Friction detected (e.g. stall detector)
   D->>SDK: emit FrictionSignal<br/>{type, pageUrl, selector, timestamp}
-  SDK->>EP: captureEvent("friction", ...)<br/>(async, goes to batch)
-  SDK->>SEC: sanitize friction.pageUrl<br/>(scrubUrlPII)
+  SDK->>EP: captureEvent("friction", ..., flushImmediately=true)<br/>(immediate flush to preserve causality)
+  EP->>SEC: sanitize friction.pageUrl<br/>(scrubUrlPII)
+  EP->>T: sendBatch([friction event])<br/>(immediate flush, bypasses batch threshold)
   SDK->>T: sendDecisionRequest(DecisionRequest)<br/>(immediate, bypasses batch)
   T->>BD: HTTPS POST /decide<br/>{projectId, sessionId, friction}
   BD->>BD: evaluate decision<br/>(rules/ML/experiments)
@@ -362,7 +363,9 @@ sequenceDiagram
 3. **Event enrichment**: EventPipeline adds metadata (session, location, viewport, user_agent, timestamps)
 4. **PII scrubbing**: Guardrails redact known PII keys (`email`, `phone`, `password`, etc.) and email addresses in URLs
 5. **Batching**: EventPipeline buffers events and sends in batches (periodic flush or threshold)
-6. **Decision request**: Immediate path (bypasses batching) for friction signals to enable real-time nudge delivery
+6. **Friction event immediate flush**: Friction events trigger immediate flush (bypasses batch threshold) to preserve causality and ensure friction events are stored before nudge events
+7. **Event ordering**: During batch flush, events are sorted so friction events always precede nudge events (defensive measure)
+8. **Decision request**: Immediate path (bypasses batching) for friction signals to enable real-time nudge delivery
 
 **Data formats:**
 - **ClientConfig**: `{projectId, environment, sdk: {samplingRate}, decision: {endpoint, timeoutMs}, templates, ttlSeconds}`

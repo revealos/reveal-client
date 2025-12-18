@@ -14,6 +14,7 @@ import {
 } from '../../modules/transport';
 import type { Logger } from '../../utils/logger';
 import type { BaseEvent } from '../../types/events';
+import type { BackendEventFormat } from '../../modules/eventTransformer';
 
 describe('Transport', () => {
   let mockFetch: typeof fetch;
@@ -205,6 +206,116 @@ describe('Transport', () => {
       const batchId2 = (onSuccessCallback as any).mock.calls[1][0];
 
       expect(batchId1).not.toBe(batchId2);
+    });
+
+    it('should transform events if transformEvent function provided', async () => {
+      const mockTransform = vi.fn((event: BaseEvent): BackendEventFormat => ({
+        event_id: 'transformed-id',
+        session_id: event.session_id,
+        timestamp: new Date(event.timestamp).toISOString(),
+        event_kind: event.kind,
+        event_type: event.name,
+        event_source: event.event_source,
+        anonymous_id: 'anon-123',
+        sdk_version: '0.1.0',
+        properties: event.payload,
+        page_url: null,
+        page_title: null,
+        referrer: null,
+        selector: null,
+        element_text: null,
+        friction_type: null,
+        user_key: null,
+        environment: null,
+        batch_id: null,
+      }));
+
+      const options: TransportOptions = {
+        endpointUrl: 'https://api.example.com/ingest',
+        clientKey: 'test-key',
+        fetchFn: mockFetch,
+        logger: mockLogger,
+        transformEvent: mockTransform,
+      };
+      transport = createTransport(options);
+
+      const events = [createMockEvent()];
+      await transport.sendBatch(events);
+
+      expect(mockTransform).toHaveBeenCalledTimes(1);
+      expect(mockTransform).toHaveBeenCalledWith(events[0]);
+
+      // Verify transformed event was sent
+      const fetchCall = (mockFetch as any).mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body);
+      expect(requestBody.events[0].event_id).toBe('transformed-id');
+      expect(requestBody.events[0].event_kind).toBe('product');
+      expect(requestBody.events[0].event_type).toBe('test_event');
+      expect(requestBody.events[0].anonymous_id).toBe('anon-123');
+      expect(requestBody.events[0].sdk_version).toBe('0.1.0');
+    });
+
+    it('should send events without transformation if transformEvent not provided', async () => {
+      const events = [createMockEvent()];
+      await transport.sendBatch(events);
+
+      // Verify original event was sent (backward compatibility)
+      const fetchCall = (mockFetch as any).mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body);
+      expect(requestBody.events[0].kind).toBe('product');
+      expect(requestBody.events[0].name).toBe('test_event');
+      expect(requestBody.events[0].event_id).toBeUndefined();
+    });
+
+    it('should transform events in beacon mode', async () => {
+      const mockTransform = vi.fn((event: BaseEvent): BackendEventFormat => ({
+        event_id: 'transformed-id',
+        session_id: event.session_id,
+        timestamp: new Date(event.timestamp).toISOString(),
+        event_kind: event.kind,
+        event_type: event.name,
+        event_source: event.event_source,
+        anonymous_id: 'anon-123',
+        sdk_version: '0.1.0',
+        properties: event.payload,
+        page_url: null,
+        page_title: null,
+        referrer: null,
+        selector: null,
+        element_text: null,
+        friction_type: null,
+        user_key: null,
+        environment: null,
+        batch_id: null,
+      }));
+
+      const options: TransportOptions = {
+        endpointUrl: 'https://api.example.com/ingest',
+        clientKey: 'test-key',
+        fetchFn: mockFetch,
+        beaconFn: mockSendBeacon,
+        logger: mockLogger,
+        transformEvent: mockTransform,
+      };
+      transport = createTransport(options);
+
+      const events = [createMockEvent()];
+      await transport.sendBatch(events, 'beacon');
+
+      expect(mockTransform).toHaveBeenCalledTimes(1);
+      expect(mockSendBeacon).toHaveBeenCalledTimes(1);
+
+      // Verify transformed event was sent in beacon
+      const [url, blob] = (mockSendBeacon as any).mock.calls[0];
+      // Read blob content using FileReader or direct access
+      const blobText = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsText(blob);
+      });
+      const requestBody = JSON.parse(blobText);
+      expect(requestBody.events[0].event_id).toBe('transformed-id');
+      expect(requestBody.events[0].event_kind).toBe('product');
     });
   });
 

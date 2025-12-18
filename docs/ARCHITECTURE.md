@@ -56,8 +56,9 @@ Here's how the SDK works at runtime:
 2. User Interaction
    └─> DetectorManager detects friction
        └─> Emits FrictionSignal
-           ├─> EventPipeline.captureEvent('friction', ...)
-           │   └─> Buffers event, sends to backend via Transport
+           ├─> EventPipeline.captureEvent('friction', ..., flushImmediately=true)
+           │   └─> Immediately flushes friction event to preserve causality
+           │       └─> Events sorted during flush: friction events always precede nudge events
            └─> DecisionClient.requestDecision(signal)
                └─> Backend returns WireNudgeDecision (or null)
                    └─> EntryPoint.notifyNudgeSubscribers(decision)

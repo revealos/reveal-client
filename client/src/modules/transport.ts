@@ -23,6 +23,7 @@
 import type { BaseEvent } from "../types/events";
 import type { Logger } from "../utils/logger";
 import { logAuditEvent, createAuditEvent } from "../security/auditLogger";
+import type { BackendEventFormat } from "./eventTransformer";
 
 /**
  * Transport options
@@ -38,6 +39,7 @@ export interface TransportOptions {
   retryDelayMs?: number;
   timeoutMs?: number;
   logger?: Logger;
+  transformEvent?: (event: BaseEvent) => BackendEventFormat;
 }
 
 /**
@@ -53,6 +55,7 @@ export interface DecideRequestPayload {
     timestamp: number;
     extra?: Record<string, any>;
   };
+  isNudgeActive?: boolean; // Client state: indicates if a nudge is currently active (for backend monitoring)
 }
 
 /**
@@ -114,6 +117,7 @@ export function createTransport(options: TransportOptions): Transport {
     retryDelayMs = 1000,
     timeoutMs = 10000,
     logger,
+    transformEvent,
   } = options;
 
   // ──────────────────────────────────────────────────────────────────────
@@ -229,10 +233,15 @@ export function createTransport(options: TransportOptions): Transport {
     }, timeoutMs);
 
     try {
+      // Transform events if transformation function provided
+      const eventsToSend = transformEvent
+        ? events.map(event => transformEvent(event))
+        : events;
+
       // Build request payload
       const payload = {
         batch_id: batchId,
-        events: events,
+        events: eventsToSend,
         timestamp: now(),
       };
 
@@ -387,10 +396,15 @@ export function createTransport(options: TransportOptions): Transport {
     }
 
     try {
+      // Transform events if transformation function provided
+      const eventsToSend = transformEvent
+        ? events.map(event => transformEvent(event))
+        : events;
+
       // Build request payload
       const payload = {
         batch_id: batchId,
-        events: events,
+        events: eventsToSend,
         timestamp: now(),
       };
 

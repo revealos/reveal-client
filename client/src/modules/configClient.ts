@@ -120,7 +120,7 @@ export function createConfigClient(
 
     return true;
   }
-
+  
   return {
     getConfig: async () => {
       try {
@@ -241,7 +241,7 @@ export function createConfigClient(
         } catch {
           // Ignore logger errors
         }
-        return null;
+      return null;
       }
     },
 

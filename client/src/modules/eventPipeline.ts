@@ -49,7 +49,7 @@ export interface EventPipelineOptions {
  * EventPipeline interface
  */
 export interface EventPipeline {
-  captureEvent(kind: EventKind, name: string, payload?: EventPayload): void;
+  captureEvent(kind: EventKind, name: string, payload?: EventPayload, flushImmediately?: boolean): void;
   flush(force?: boolean, mode?: "normal" | "beacon"): Promise<void>;
   startPeriodicFlush(): void;
   destroy(): void;
@@ -403,7 +403,8 @@ export function createEventPipeline(
   function captureEvent(
     kind: EventKind,
     name: string,
-    payload: EventPayload = {}
+    payload: EventPayload = {},
+    flushImmediately: boolean = false
   ): void {
     if (isDestroyed) {
       logger?.logDebug("EventPipeline: destroyed, ignoring event");
@@ -412,7 +413,7 @@ export function createEventPipeline(
 
     safeTry(
       () => {
-        logger?.logDebug("EventPipeline: capturing event", { kind, name });
+        logger?.logDebug("EventPipeline: capturing event", { kind, name, flushImmediately });
 
         // Enrich event with metadata
         const enrichedEvent = enrichEvent(kind, name, payload);
@@ -427,7 +428,18 @@ export function createEventPipeline(
           shouldFlush: eventBuffer.length >= batchSize,
         });
 
-        if (eventBuffer.length >= batchSize) {
+        // If flushImmediately is true (e.g., for friction events), trigger immediate flush
+        // This ensures friction events are sent before nudge events to preserve causality
+        if (flushImmediately) {
+          logger?.logDebug(
+            "EventPipeline: immediate flush requested, triggering flush",
+            { kind, name, bufferLength: eventBuffer.length }
+          );
+          // Fire-and-forget flush (don't await)
+          flush(true, "normal").catch((error) => {
+            logger?.logError("EventPipeline: immediate flush failed", error);
+          });
+        } else if (eventBuffer.length >= batchSize) {
           logger?.logDebug(
             "EventPipeline: batch size reached, triggering flush",
             { bufferLength: eventBuffer.length, batchSize }
@@ -507,6 +519,17 @@ export function createEventPipeline(
     // Extract events to send (drain buffer)
     const eventsToSend = eventBuffer.slice(); // Copy array
     eventBuffer = []; // Clear buffer immediately
+
+    // CRITICAL: Sort events to ensure friction events always come before nudge events
+    // This preserves causality: friction → decision → nudge
+    // Events are sorted by kind priority: friction first, then others
+    eventsToSend.sort((a, b) => {
+      // Friction events always come first
+      if (a.kind === "friction" && b.kind !== "friction") return -1;
+      if (a.kind !== "friction" && b.kind === "friction") return 1;
+      // Within same kind, preserve original order (timestamp)
+      return 0;
+    });
 
     // Update last flush timestamp
     lastFlushTimestamp = now();

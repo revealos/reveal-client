@@ -326,5 +326,42 @@ describe('DecisionClient', () => {
       expect(payload.friction.extra.from_view).toBe('checkout');
       expect(payload.friction.extra.to_view).toBe('payment');
     });
+
+    it('should include isNudgeActive in decision request payload when provided', async () => {
+      const signal = createMockFrictionSignal();
+      const context = {
+        projectId: 'test-project',
+        sessionId: 'test-session',
+        isNudgeActive: true,
+      };
+
+      (mockTransport.sendDecisionRequest as any).mockResolvedValue({
+        decision: null,
+      });
+
+      await decisionClient.requestDecision(signal, context);
+
+      const callArgs = (mockTransport.sendDecisionRequest as any).mock.calls[0];
+      const payload = callArgs[1];
+      expect(payload.isNudgeActive).toBe(true);
+    });
+
+    it('should default isNudgeActive to false when not provided', async () => {
+      const signal = createMockFrictionSignal();
+      const context = {
+        projectId: 'test-project',
+        sessionId: 'test-session',
+      };
+
+      (mockTransport.sendDecisionRequest as any).mockResolvedValue({
+        decision: null,
+      });
+
+      await decisionClient.requestDecision(signal, context);
+
+      const callArgs = (mockTransport.sendDecisionRequest as any).mock.calls[0];
+      const payload = callArgs[1];
+      expect(payload.isNudgeActive).toBe(false);
+    });
   });
 });
