@@ -4,10 +4,19 @@
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
   "sideEffects": true,
   "scripts": {
-    "build": "tsup",
-    "test": "vitest"
+    "build": "tsup && tsc --emitDeclarationOnly --outDir dist",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@testing-library/react": "^16.1.0",
@@ -17,9 +26,12 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.3.4",
     "jsdom": "^25.0.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
     "vitest": "^4.0.14"
   },
   "dependencies": {
+    "@reveal/overlay-wc": "workspace:*",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   }

@@ -1,31 +1,23 @@
 // packages/overlay-react/src/index.ts
 
 /**
- * Reveal Nudge UI - React-based nudges library
- * 
- * This package provides React components for rendering nudges in React applications.
- * It is a React-only library - no DOM helper APIs are provided.
+ * Reveal Nudge UI - React adapter for @reveal/overlay-wc
+ *
+ * This package provides React components that wrap @reveal/overlay-wc Web Components.
+ * ALL UI logic lives in @reveal/overlay-wc - this package only provides React-friendly adapters.
  */
 
 // Main host component
 export { OverlayManager } from "./components/OverlayManager";
 export type { OverlayManagerProps } from "./components/OverlayManager";
 
-// Template components (optional - OverlayManager handles routing internally)
-// export { SpotlightNudge } from "./components/templates/SpotlightNudge";
-// export { BannerNudge } from "./components/templates/BannerNudge";
+// Template components
 export { TooltipNudge } from "./components/templates/TooltipNudge";
-// export { InlineHint } from "./components/templates/InlineHint";
-// export { ModalNudge } from "./components/templates/ModalNudge";
+export type { TooltipNudgeProps } from "./components/templates/TooltipNudge";
 
-// Types
-export type {
-  WireNudgeDecision,
-  UINudgeDecision,
-  NudgeDecision,
-  NudgeTemplateId,
-  NudgeSeverity,
-  NudgeQuadrant,
-} from "./types/NudgeDecision";
+// Re-export types from overlay-wc (source of truth)
+export type { NudgeDecision, NudgeQuadrant, NudgeTemplateId } from "@reveal/overlay-wc";
 
+// Re-export legacy types for backward compatibility
+export type { WireNudgeDecision, UINudgeDecision } from "./types/NudgeDecision";
 export { mapWireToUI } from "./types/NudgeDecision";

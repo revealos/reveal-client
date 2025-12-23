@@ -31,11 +31,21 @@ A lightweight, security-first SDK for detecting user friction and displaying con
 
 ### 1. Install
 
+**React applications:**
 ```bash
 npm install @reveal/client @reveal/overlay-react
 ```
 
+**Other frameworks (Vue, Svelte, Angular) or vanilla JavaScript:**
+```bash
+npm install @reveal/client @reveal/overlay-wc
+```
+
+> **Note**: `@reveal/overlay-react` is a thin React adapter over `@reveal/overlay-wc` Web Components. All UI logic lives in the framework-agnostic `@reveal/overlay-wc` package.
+
 ### 2. Initialize
+
+#### React Applications
 
 Create a `RevealContextProvider` component to handle SDK initialization and overlay rendering:
 
@@ -49,18 +59,18 @@ import { OverlayManager } from '@reveal/overlay-react';
 
 export function RevealContextProvider({ children }: { children: React.ReactNode }) {
   const { decision, handlers } = useNudgeDecision();
-  
+
   useEffect(() => {
     (async () => {
       await Reveal.init('your-client-key');
     })();
   }, []);
-  
+
   return (
     <>
       {children}
-      <OverlayManager 
-        decision={decision} 
+      <OverlayManager
+        decision={decision}
         onDismiss={handlers.onDismiss}
         onActionClick={handlers.onActionClick}
         onTrack={handlers.onTrack}
@@ -116,6 +126,38 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </RevealContextProvider>
 );
 ```
+
+#### Other Frameworks (Vue, Svelte, Angular) or Vanilla JavaScript
+
+Use `@reveal/overlay-wc` Web Components directly:
+
+```javascript
+import { Reveal } from '@reveal/client';
+import '@reveal/overlay-wc';
+
+// Initialize SDK
+await Reveal.init('your-client-key');
+
+// Create overlay manager
+const manager = document.createElement('reveal-overlay-manager');
+document.body.appendChild(manager);
+
+// Subscribe to nudge decisions
+Reveal.onNudgeDecision((decision) => {
+  manager.decision = decision;
+});
+
+// Listen for user interactions
+manager.addEventListener('reveal:dismiss', (e) => {
+  Reveal.track('nudge', 'dismissed', { nudge_id: e.detail.id });
+});
+
+manager.addEventListener('reveal:action-click', (e) => {
+  Reveal.track('nudge', 'clicked', { nudge_id: e.detail.id });
+});
+```
+
+See [overlay-wc/README.md](./overlay-wc/README.md) for framework-specific examples (Vue, Svelte, etc.).
 
 ### 3. Track Events & Display Nudges
 

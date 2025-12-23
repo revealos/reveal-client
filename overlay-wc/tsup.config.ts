@@ -2,12 +2,12 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: ["src/index.ts"],
-  dts: false, // Disable tsup DTS - will use tsc instead
   format: ["esm", "cjs"],
-  target: "es2019",
+  target: "es2020",
+  dts: true,
   sourcemap: true,
   clean: true,
   minify: true,
-  external: ["react", "react-dom"],
+  splitting: false,
+  treeshake: true,
 });
-

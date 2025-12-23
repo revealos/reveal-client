@@ -8,7 +8,11 @@
     "jsx": "react-jsx",
     "types": ["react", "react-dom", "node"],
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "@reveal/overlay-wc": ["../overlay-wc/src/index.ts"]
+    }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/__tests__", "node_modules", "dist"]
 }
