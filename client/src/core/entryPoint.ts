@@ -143,7 +143,7 @@ export async function init(
     } else if (options.apiBase && typeof options.apiBase === "string") {
       ingestEndpoint = `${options.apiBase}/ingest`;
     } else {
-      ingestEndpoint = "https://api.reveal.io/ingest";
+      ingestEndpoint = "https://api.revealos.com/ingest";
     }
     loggerRef.logDebug("Resolved ingest endpoint", { ingestEndpoint });
 
@@ -156,7 +156,7 @@ export async function init(
     } else if (options.apiBase && typeof options.apiBase === "string") {
       configEndpoint = `${options.apiBase}/config`;
     } else {
-      configEndpoint = "https://api.reveal.io/config";
+      configEndpoint = "https://api.revealos.com/config";
     }
     loggerRef.logDebug("Resolved config endpoint", { configEndpoint });
 
@@ -178,7 +178,7 @@ export async function init(
         samplingRate: 1.0,
       },
       decision: {
-        endpoint: options.decisionEndpoint || `${options.apiBase || "https://api.reveal.io"}/decide`,
+        endpoint: options.decisionEndpoint || `${options.apiBase || "https://api.revealos.com"}/decide`,
         timeoutMs: options.decisionTimeoutMs || defaultDecisionTimeout,
       },
       templates: [],
@@ -236,7 +236,7 @@ export async function init(
     // If decision endpoint is relative (starts with /), resolve it using apiBase or configEndpoint base
     if (resolvedDecisionEndpoint.startsWith("/")) {
       // Use apiBase if available, otherwise derive from configEndpoint
-      const baseUrl = options.apiBase || (configEndpoint ? configEndpoint.replace(/\/config.*$/, "") : "https://api.reveal.io");
+      const baseUrl = options.apiBase || (configEndpoint ? configEndpoint.replace(/\/config.*$/, "") : "https://api.revealos.com");
       resolvedDecisionEndpoint = `${baseUrl}${resolvedDecisionEndpoint}`;
     }
 

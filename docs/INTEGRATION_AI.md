@@ -78,13 +78,13 @@ export function RevealContextProvider({ children }: { children: React.ReactNode 
       ingestEndpoint: process.env.NEXT_PUBLIC_REVEAL_INGEST_ENDPOINT || 
         (isDevelopment 
           ? 'http://localhost:3000/ingest'  // Adjust if local dev server differs
-          : 'https://api.reveal.io/ingest'),
+          : 'https://api.revealos.com/ingest'),
       
       // Decision endpoint
       decisionEndpoint: process.env.NEXT_PUBLIC_REVEAL_DECIDE_ENDPOINT || 
         (isDevelopment 
           ? 'http://localhost:3000/decide'  // Adjust if local dev server differs
-          : 'https://api.reveal.io/decide'),
+          : 'https://api.revealos.com/decide'),
       
       // Timeout: longer for dev (CORS preflight + logging), realistic for prod (network + backend processing)
       decisionTimeoutMs: isDevelopment ? 2000 : 400,
@@ -333,8 +333,8 @@ Create or update `.env.local` (or `.env`) with Reveal configuration:
 ```bash
 # Reveal SDK Configuration
 NEXT_PUBLIC_REVEAL_CLIENT_KEY=your-client-key-here
-NEXT_PUBLIC_REVEAL_INGEST_ENDPOINT=https://api.reveal.io/ingest
-NEXT_PUBLIC_REVEAL_DECIDE_ENDPOINT=https://api.reveal.io/decide
+NEXT_PUBLIC_REVEAL_INGEST_ENDPOINT=https://api.revealos.com/ingest
+NEXT_PUBLIC_REVEAL_DECIDE_ENDPOINT=https://api.revealos.com/decide
 ```
 
 **Note**: For non-Next.js apps, use framework-specific env var patterns:

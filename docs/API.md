@@ -17,7 +17,7 @@ Reveal.init(clientKey: string, options?: InitOptions): Promise<void>
 | Option | Type | Default | Who Sets It? | Description |
 |--------|------|---------|--------------|-------------|
 | `clientKey` | `string` | - | **You (required)** | Your project's client key from Reveal dashboard |
-| `apiBase` | `string` | `"https://api.reveal.io"` | You (if self-hosting) | Backend API base URL. Used to construct config, ingest, and decision endpoints. Only needed if self-hosting or using non-default URL |
+| `apiBase` | `string` | `"https://api.revealos.com"` | You (if self-hosting) | Backend API base URL. Used to construct config, ingest, and decision endpoints. Only needed if self-hosting or using non-default URL |
 | `configEndpoint` | `string` | `"{apiBase}/config"` | You (if custom) | Explicit config endpoint. Overrides `apiBase` for config fetch. SDK fetches client-safe configuration from this endpoint during initialization |
 | `ingestEndpoint` | `string` | `"{apiBase}/ingest"` | You (if custom) | Explicit event ingestion endpoint. Overrides `apiBase` |
 | `decisionEndpoint` | `string` | `"{apiBase}/decide"` | You (if custom) | Explicit decision endpoint. Overrides `apiBase`. **Note:** If backend config returns a relative path (e.g., `/decide`), SDK automatically resolves it using `apiBase` |

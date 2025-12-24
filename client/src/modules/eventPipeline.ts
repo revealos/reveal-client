@@ -290,8 +290,11 @@ export function createEventPipeline(
 
     // Map camelCase to snake_case
     if ("nudgeId" in transformed) {
+      console.log("[EventPipeline] transformNudgePayload: nudgeId found, transforming to nudge_id", transformed.nudgeId);
       transformed.nudge_id = transformed.nudgeId;
       delete transformed.nudgeId;
+    } else {
+      console.log("[EventPipeline] transformNudgePayload: NO nudgeId in payload!", transformed);
     }
 
     if ("slotId" in transformed) {

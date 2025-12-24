@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fetches client-safe configuration during SDK initialization
   - Caches config with TTL (from response `ttlSeconds` or default 60s)
   - Falls back to minimalConfig if fetch fails (maintains backward compatibility)
-  - Config endpoint resolution: `configEndpoint` → `${apiBase}/config` → `https://api.reveal.io/config`
+  - Config endpoint resolution: `configEndpoint` → `${apiBase}/config` → `https://api.revealos.com/config`
   - Includes `X-Reveal-Client-Key` header and `environment` query param
   - Validates endpoint URL for HTTPS (with localhost exception)
   - Comprehensive error handling: network errors, HTTP errors, invalid responses all handled gracefully
