@@ -189,6 +189,93 @@ tooltip.addEventListener('reveal:dismiss', () => {
 });
 ```
 
+### `<reveal-spotlight>`
+
+Full-screen dark scrim with a circular cutout that highlights a specific target element. Used for hard-intrusion onboarding flows where you need to direct user attention to a specific UI element.
+
+**Properties**:
+- `decision` (NudgeDecision) - Spotlight configuration
+
+**Events**:
+- `reveal:dismiss` - Spotlight dismissed (reasons: `click_outside`, `focus`, `scroll`, `esc`, `target_not_found`)
+- `reveal:action-click` - Target element clicked (tracked as `nudge_clicked` in backend)
+- `reveal:shown` - Spotlight displayed to user
+
+**Features**:
+- Full-screen scrim (opacity 0.60) with circular cutout
+- Target element detection via CSS selector
+- Auto-reposition on window resize (100ms debounce)
+- Smart dismissal: clicking/focusing target = success action (NOT dismissal)
+- Click-through support: clicks on target pass through to underlying element
+- Caption positioned using quadrant system
+- Target-not-found handling (auto-dismiss if selector doesn't match)
+
+**Target Element Marking**:
+
+To spotlight a specific element, add a `data-reveal` attribute to it:
+
+```html
+<!-- Mark the target element -->
+<button data-reveal="spotlight-target" class="cta-button">
+  Create Project
+</button>
+```
+
+Then configure the backend nudge with the corresponding CSS selector:
+
+```javascript
+// Backend nudge configuration
+{
+  "nudgeId": "onboarding-1",
+  "templateId": "spotlight",
+  "body": "Click here to create your first project",
+  "selectorPattern": "[data-reveal='spotlight-target']",
+  "quadrant": "bottomCenter"
+}
+```
+
+**Example**:
+
+```javascript
+const spotlight = document.createElement('reveal-spotlight');
+spotlight.decision = {
+  nudgeId: 'onboarding-create-project',
+  templateId: 'spotlight',
+  body: 'Click here to create your first project',
+  selectorPattern: "[data-reveal='spotlight-target']",
+  quadrant: 'bottomCenter',
+  debugCode: 'X4368DGE'
+};
+
+// Track when user clicks the target (success!)
+spotlight.addEventListener('reveal:action-click', (e) => {
+  console.log('User clicked target:', e.detail.id);
+  // Backend receives this as 'nudge_clicked' event
+  spotlight.remove();
+});
+
+// Track dismissal (user clicked outside or pressed ESC)
+spotlight.addEventListener('reveal:dismiss', (e) => {
+  console.log('Dismissed:', e.detail.reason);
+  spotlight.remove();
+});
+
+document.body.appendChild(spotlight);
+```
+
+**Dismissal Behavior**:
+
+| User Action | Result | Backend Event |
+|-------------|--------|---------------|
+| Click target element | `reveal:action-click` | `nudge_clicked` |
+| Click outside target | `reveal:dismiss` (reason: `click_outside`) | `nudge_dismissed` |
+| Focus outside target | `reveal:dismiss` (reason: `focus`) | `nudge_dismissed` |
+| Press ESC key | `reveal:dismiss` (reason: `esc`) | `nudge_dismissed` |
+| Scroll >16px | `reveal:dismiss` (reason: `scroll`) | `nudge_dismissed` |
+| Target not found | `reveal:dismiss` (reason: `target_not_found`) | `nudge_dismissed` |
+
+**Important**: Clicking or focusing the target element is treated as a **success action** (not a dismissal), since spotlight explicitly guides users to interact with that element.
+
 ## Type Definitions
 
 ### `NudgeDecision`
@@ -200,6 +287,7 @@ interface NudgeDecision {
   title?: string;
   body?: string;
   ctaText?: string;
+  selectorPattern?: string;  // CSS selector for target element (used by spotlight)
   quadrant?: NudgeQuadrant;
   debugCode?: string;
   dismissible?: boolean;
@@ -260,12 +348,12 @@ myElement.style.left = `${position.left}px`;
 
 ### Currently Implemented
 - ✅ **Tooltip** - Glassmorphic tooltip with arrow
+- ✅ **Spotlight** - Full-screen scrim with circular cutout highlighting a target element
+- ✅ **InlineHint** - Inline content hint
 
 ### Coming Soon
 - ⏳ **Banner** - Full-width banner (top/bottom)
 - ⏳ **Modal** - Centered modal with backdrop
-- ⏳ **Spotlight** - Highlight with callout
-- ⏳ **InlineHint** - Inline content hint
 
 ## Browser Support
 

@@ -44,6 +44,11 @@ export interface NudgeDecision {
   ctaText?: string;
 
   /**
+   * CSS selector for target element (used by spotlight template)
+   */
+  selectorPattern?: string;
+
+  /**
    * Viewport quadrant for positioning (defaults to "topCenter")
    */
   quadrant?: NudgeQuadrant;

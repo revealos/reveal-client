@@ -14,6 +14,10 @@ export type { OverlayManagerProps } from "./components/OverlayManager";
 // Template components
 export { TooltipNudge } from "./components/templates/TooltipNudge";
 export type { TooltipNudgeProps } from "./components/templates/TooltipNudge";
+export { InlineHint } from "./components/templates/InlineHint";
+export type { InlineHintProps } from "./components/templates/InlineHint";
+export { Spotlight } from "./components/templates/Spotlight";
+export type { SpotlightProps } from "./components/templates/Spotlight";
 
 // Re-export types from overlay-wc (source of truth)
 export type { NudgeDecision, NudgeQuadrant, NudgeTemplateId } from "@reveal/overlay-wc";

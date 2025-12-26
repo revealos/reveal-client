@@ -19,6 +19,14 @@ declare module 'react' {
         React.HTMLAttributes<HTMLElement>,
         HTMLElement
       >;
+      'reveal-inline-hint-nudge': React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement>,
+        HTMLElement
+      >;
+      'reveal-spotlight': React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement>,
+        HTMLElement
+      >;
     }
   }
 }

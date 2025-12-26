@@ -6,11 +6,15 @@
  *
  * Currently supports:
  * - tooltip (fully implemented)
- * - modal, banner, spotlight, inline_hint (not yet implemented)
+ * - inline_hint (fully implemented)
+ * - spotlight (fully implemented)
+ * - modal, banner (not yet implemented)
  */
 
 import type { NudgeDecision } from "../types/nudge-decision";
 import { RevealTooltipNudge } from "./reveal-tooltip-nudge";
+import { RevealInlineHintNudge } from "./reveal-inline-hint-nudge";
+import "./reveal-spotlight"; // Import for side-effects (registers custom element)
 
 // Conditional base class to support SSR
 const HTMLElementBase = (typeof HTMLElement !== 'undefined' ? HTMLElement : Object) as typeof HTMLElement;
@@ -84,6 +88,22 @@ export class RevealOverlayManager extends HTMLElementBase {
 
       this._currentTemplate = tooltip;
       this._shadowRoot.appendChild(tooltip);
+    } else if (templateId === "inline_hint") {
+      const inlineHint = document.createElement("reveal-inline-hint-nudge") as RevealInlineHintNudge;
+
+      // Events from child will bubble naturally through Shadow DOM (composed: true)
+      inlineHint.decision = this._decision;
+
+      this._currentTemplate = inlineHint;
+      this._shadowRoot.appendChild(inlineHint);
+    } else if (templateId === "spotlight") {
+      const spotlight = document.createElement("reveal-spotlight");
+
+      // Events from child will bubble naturally through Shadow DOM (composed: true)
+      (spotlight as any).decision = this._decision;
+
+      this._currentTemplate = spotlight;
+      this._shadowRoot.appendChild(spotlight);
     } else {
       // Unimplemented template - log warning
       console.warn(`[reveal-overlay-manager] Template "${templateId}" not yet implemented`);

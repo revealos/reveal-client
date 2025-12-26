@@ -10,6 +10,8 @@
 // Components (auto-register when imported)
 export { RevealOverlayManager } from "./components/reveal-overlay-manager";
 export { RevealTooltipNudge } from "./components/reveal-tooltip-nudge";
+export { RevealInlineHintNudge } from "./components/reveal-inline-hint-nudge";
+export { RevealSpotlight } from "./components/reveal-spotlight";
 
 // Types
 export type { NudgeDecision, NudgeQuadrant, NudgeTemplateId } from "./types/nudge-decision";
