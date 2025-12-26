@@ -120,13 +120,14 @@ export class RevealSpotlight extends HTMLElementBase {
           z-index: 10000;
           pointer-events: none;
 
-          /* Radial gradient hole */
+          /* Radial gradient hole with soft falloff and directional bias */
           background: radial-gradient(
-            circle ${radius}px at ${centerX}px ${centerY}px,
-            transparent 0,
-            transparent ${radius}px,
-            rgba(0, 0, 0, 0.60) ${radius}px
+            circle ${radius * 0.92}px at ${centerX}px ${centerY}px,
+            rgba(0, 0, 0, 0) 0%,
+            rgba(0, 0, 0, 0.06) ${radius * 0.85}px,
+            rgba(0, 0, 0, 0.18) ${radius * 1.05}px
           );
+          box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.18);
 
           /* Fade-in animation */
           opacity: 0;
@@ -151,17 +152,17 @@ export class RevealSpotlight extends HTMLElementBase {
           z-index: 10001;
 
           /* Styling */
-          background: hsla(240, 15%, 14%, 0.32);
+          background: hsla(240, 15%, 14%, 0.45);
           backdrop-filter: blur(6px);
           -webkit-backdrop-filter: blur(6px);
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          box-shadow: 0 0 8px rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 
           padding: 16px 24px;
           border-radius: 8px;
           width: clamp(200px, 30vw, 300px);
 
-          color: #e8e8eb;
+          color: rgba(255, 255, 255, 0.92);
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           font-size: 17px;
           line-height: 1.4;
