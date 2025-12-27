@@ -19,6 +19,7 @@ import type { FrictionSignal, FrictionType } from "../types/friction";
 import type { ClientConfig } from "../types/config";
 import type { Logger } from "../utils/logger";
 import { createStallDetector, type StallDetector, type IdleWatchConfig } from "../detectors/stallDetector";
+import { createRageClickDetector, type RageClickDetector } from "../detectors/rageClickDetector";
 
 /**
  * Base detector interface (internal)
@@ -143,11 +144,17 @@ export function createDetectorManager(
     emit: emitFrictionSignal,
   });
 
-  // TODO: Create other detectors when implemented
-  // const rageClickDetector = createRageClickDetector({...});
+  const rageClickDetector = createRageClickDetector({
+    win,
+    doc,
+    logger,
+    emit: emitFrictionSignal,
+  });
+
+  // TODO: Create backtrack detector when implemented
   // const backtrackDetector = createBacktrackDetector({...});
 
-  const detectors: BaseDetector[] = [stallDetector];
+  const detectors: BaseDetector[] = [stallDetector, rageClickDetector];
 
   function initDetectors() {
     detectors.forEach((d) => {
