@@ -35,6 +35,15 @@ import type {
 } from '@reveal/client';
 ```
 
+### Friction Detection
+
+The SDK automatically detects user friction patterns:
+- **Stall**: User becomes idle during critical workflows
+- **RageClick**: Rapid repeated clicks indicating frustration
+- **Backtrack**: User navigates backward to recently visited routes
+
+All friction signals are automatically sent to the backend for decision-making.
+
 ## Documentation
 
 - **Main README** → [../README.md](../README.md)

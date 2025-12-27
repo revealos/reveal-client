@@ -95,8 +95,8 @@ Friction events track user hesitation, confusion, or difficulty. These can be:
 
 **Auto-Generated Event Types:**
 - `friction_stall` - User inactive for threshold duration (default: 20 seconds)
-- `friction_rageclick` - Multiple rapid clicks on same element (planned)
-- `friction_backtrack` - User navigated backward (planned)
+- `friction_rageclick` - Multiple rapid clicks on same element
+- `friction_backtrack` - User navigated backward to recently visited routes
 
 **Manual Friction Events:**
 You can manually track friction when you detect patterns in your application:
@@ -110,8 +110,10 @@ Reveal.track('friction', 'form_abandoned', {
 });
 ```
 
-**Auto-Generated Example:**
+**Auto-Generated Examples:**
+
 ```typescript
+// Stall Detection
 // Automatically sent by SDK when stall is detected
 // Event type: "friction_stall"
 // Payload includes:
@@ -120,7 +122,60 @@ Reveal.track('friction', 'form_abandoned', {
   selector: '#submit-button',
   stall_duration_ms: 20000,
 }
+
+// Backtrack Detection
+// Automatically sent by SDK when user navigates backward
+// Event type: "friction_backtrack"
+// Payload includes:
+{
+  from_view: '/settings',
+  to_view: '/dashboard',
+  from: {
+    url: 'https://app.example.com/settings?tab=billing',
+    path: '/settings'
+  },
+  to: {
+    url: 'https://app.example.com/dashboard',
+    path: '/dashboard'
+  },
+  method: 'popstate',
+  reason: 'returned_to_recent_route',
+  lastForwardTs: 1703001234567,
+  deltaMs: 5420,
+  stackDepth: 2,
+  debugCode: 'BT_POPSTATE_2D_5420MS'
+}
 ```
+
+#### Backtrack Friction Details
+
+The SDK automatically detects when users navigate backward to recently visited routes, indicating potential confusion or lost state.
+
+**Detection Logic:**
+- Tracks navigation history via `popstate`, `hashchange`, and History API (`pushState`/`replaceState`)
+- Detects A→B→A pattern (return to route from 2 entries ago)
+- 30s recency window (only detects backtrack if original route visited within last 30s)
+- 10s cooldown between emissions
+- Route identity: pathname-only (strips search params and hash)
+
+**Evidence Fields:**
+- `from_view` - Route pathname before navigation (backend scoring key)
+- `to_view` - Route pathname after navigation (backend scoring key)
+- `from.url` - Full URL before navigation
+- `from.path` - Pathname (normalized, no query/hash)
+- `to.url` - Full URL after navigation
+- `to.path` - Pathname (normalized, no query/hash)
+- `method` - Navigation method: `"popstate"` | `"pushState"` | `"replaceState"` | `"hashchange"`
+- `reason` - Always `"returned_to_recent_route"`
+- `lastForwardTs` - Timestamp when `from_view` was last visited
+- `deltaMs` - Time since last visit (ms)
+- `stackDepth` - Position in route stack (typically 2)
+- `debugCode` - Diagnostic code (e.g., `"BT_POPSTATE_2D_5420MS"`)
+
+**Use Cases:**
+- User navigates `/dashboard` → `/settings` → `/dashboard` (confusion, couldn't find setting)
+- User goes back after failed form submission (lost state)
+- User returns to previous page after encountering error
 
 ---
 
