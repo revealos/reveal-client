@@ -25,6 +25,43 @@ Reveal.track(
 
 ---
 
+## Cohort Tracking
+
+**All events automatically include a `cohort` property** that indicates whether the user is in the treatment or control group for A/B testing:
+
+- `properties.cohort: "treatment"` - User assigned to treatment group (will receive nudges)
+- `properties.cohort: "control"` - User assigned to control group (no nudges)
+- `properties.cohort: null` - No treatment assignment (treatment rules disabled)
+
+**Example:**
+```typescript
+// User tracks an event
+Reveal.track('product', 'button_clicked', { button_id: 'signup' });
+
+// SDK automatically enriches with cohort:
+{
+  event_kind: 'product',
+  event_type: 'button_clicked',
+  properties: {
+    button_id: 'signup',
+    cohort: 'treatment'  // ← Automatically added by SDK
+  }
+}
+```
+
+**Cohort Assignment:**
+- Happens at SDK initialization based on `treatment_rules` config
+- Uses hash-mod-100 bucketing on `anonymousId` (sticky) or `sessionId` (non-sticky)
+- Persisted to localStorage for consistency across sessions (best-effort)
+- If treatment rules are disabled, `cohort` is `null`
+
+**Invariant:**
+```typescript
+properties.cohort ∈ ["treatment", "control", null]
+```
+
+---
+
 ## Event Kinds
 
 ### 1. Product Events (`"product"`)

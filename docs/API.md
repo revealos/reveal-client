@@ -49,6 +49,89 @@ await Reveal.init('proj_abc123', {
 });
 ```
 
+---
+
+## Backend Configuration (ClientConfig)
+
+During initialization, the SDK fetches configuration from the backend `/config` endpoint. This config controls SDK behavior and treatment assignment.
+
+**Config Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `configVersion` | `number` | Config schema version (currently 1) |
+| `projectId` | `string` | Project identifier |
+| `environment` | `string` | Environment: `"production"` \| `"staging"` \| `"development"` |
+| `sdk.samplingRate` | `number` | Event sampling rate (0.0 to 1.0). Controls which users send events to `/ingest`. **Note:** Sampling only affects `/ingest` events, NOT `/decide` requests. All users can receive nudges regardless of sampling. |
+| `features.enabled` | `boolean` | Whether SDK features are enabled |
+| `features.detectors` | `object` | Friction detector enable flags: `{ stall, rageclick, backtrack }` |
+| `features.nudges` | `object` | Nudge template enable flags: `{ tooltip, modal, banner, spotlight, inline_hint }` |
+| `treatment_rules` | `object \| undefined` | Treatment assignment rules (A/B testing). If `undefined`, no treatment assignment occurs. |
+| `treatment_rules.sticky` | `boolean` | Whether treatment is sticky (based on `anonymousId`) or per-session (based on `sessionId`). Default: `true` |
+| `treatment_rules.treatment_percentage` | `number` | Percentage of users assigned to treatment group (0-100). Uses hash-mod-100 bucketing. |
+| `decision.endpoint` | `string` | Decision endpoint path (may be relative like `/decide`) |
+| `decision.timeoutMs` | `number` | Decision timeout in milliseconds |
+| `templates` | `array` | Nudge templates (empty array for client config - templates are backend-only) |
+| `ttlSeconds` | `number` | Config cache TTL in seconds |
+
+**Sampling Behavior:**
+- `samplingRate: 1.0` → All users send events to `/ingest` (100% sampling)
+- `samplingRate: 0.5` → 50% of users send events (deterministic hash-based bucketing)
+- `samplingRate: 0.0` → No users send events to `/ingest` (0% sampling)
+- Sampling decision is computed at init and persisted to localStorage: `reveal_sampled_in_{projectId}_{anonymousId}`
+- **Important:** Sampling does NOT affect `/decide` requests - all users can receive nudges
+
+**Treatment Assignment:**
+- If `treatment_rules` exists, users are assigned to `"treatment"` or `"control"` cohort at init
+- Treatment is computed using hash-mod-100 bucketing on `anonymousId` (sticky) or `sessionId` (non-sticky)
+- Treatment is persisted to localStorage: `reveal_treatment_{projectId}_{anonymousId}`
+- If localStorage fails, treatment still works but won't persist across page reloads (fail-open behavior)
+
+**localStorage Keys:**
+- `reveal_treatment_{projectId}_{anonymousId}` - Treatment assignment (best-effort persistence)
+- `reveal_sampled_in_{projectId}_{anonymousId}` - Sampling decision (best-effort persistence)
+- Both keys are scoped by `projectId` and `anonymousId` to prevent cross-project contamination
+- SDK handles localStorage failures gracefully (SafeTry protection)
+
+**Example Config:**
+```json
+{
+  "configVersion": 1,
+  "projectId": "proj_abc123",
+  "environment": "production",
+  "sdk": {
+    "samplingRate": 0.5
+  },
+  "features": {
+    "enabled": true,
+    "detectors": {
+      "stall": true,
+      "rageclick": true,
+      "backtrack": true
+    },
+    "nudges": {
+      "tooltip": true,
+      "modal": true,
+      "banner": false,
+      "spotlight": true,
+      "inline_hint": true
+    }
+  },
+  "treatment_rules": {
+    "sticky": true,
+    "treatment_percentage": 50
+  },
+  "decision": {
+    "endpoint": "/decide",
+    "timeoutMs": 400
+  },
+  "templates": [],
+  "ttlSeconds": 300
+}
+```
+
+---
+
 ## Reveal.track()
 
 Track an event.

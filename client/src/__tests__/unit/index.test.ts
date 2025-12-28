@@ -566,5 +566,111 @@ describe('Reveal SDK', () => {
       expect(typeof unsubscribe).toBe('function');
     });
   });
+
+  describe('SafeTry Protection - localStorage failures', () => {
+    it('should initialize successfully when localStorage throws errors', async () => {
+      // Mock localStorage to throw errors
+      const mockLocalStorage = {
+        getItem: vi.fn(() => {
+          throw new Error('localStorage disabled');
+        }),
+        setItem: vi.fn(() => {
+          throw new Error('localStorage disabled');
+        }),
+        removeItem: vi.fn(() => {
+          throw new Error('localStorage disabled');
+        }),
+        clear: vi.fn(),
+        length: 0,
+        key: vi.fn(),
+      };
+
+      // Replace global localStorage
+      vi.stubGlobal('localStorage', mockLocalStorage);
+
+      // Mock fetch to prevent actual network calls
+      const mockFetch = vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            projectId: 'test-project',
+            environment: 'development',
+            sdk: { samplingRate: 1.0 },
+            decision: { endpoint: '/decide', timeoutMs: 2000 },
+            treatment_rules: { sticky: true, treatment_percentage: 50 },
+            templates: [],
+            ttlSeconds: 60,
+          }),
+        } as Response)
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      // SDK should NOT throw even though localStorage is broken
+      await expect((async () => {
+        await Reveal.init('test-key', {
+          configEndpoint: 'https://api.reveal.io/config',
+          ingestEndpoint: 'https://api.reveal.io/ingest',
+          decisionEndpoint: 'https://api.reveal.io/decide',
+        });
+
+        // Wait for async initialization
+        await new Promise(resolve => setTimeout(resolve, 100));
+      })()).resolves.toBeUndefined();
+
+      // Verify localStorage was attempted (and failed silently)
+      expect(mockLocalStorage.getItem).toHaveBeenCalled();
+
+      // SDK should still be functional (treatment just becomes non-persistent)
+      expect(() => {
+        Reveal.track('product', 'test_event');
+      }).not.toThrow();
+
+      // Cleanup
+      Reveal.destroy();
+    });
+
+    it('should handle treatment assignment when localStorage is unavailable', async () => {
+      // Mock localStorage to be undefined (SSR scenario)
+      vi.stubGlobal('localStorage', undefined);
+
+      // Mock fetch
+      const mockFetch = vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            projectId: 'test-project',
+            environment: 'development',
+            sdk: { samplingRate: 1.0 },
+            decision: { endpoint: '/decide', timeoutMs: 2000 },
+            treatment_rules: { sticky: true, treatment_percentage: 100 },
+            templates: [],
+            ttlSeconds: 60,
+          }),
+        } as Response)
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      // SDK should NOT throw
+      await expect((async () => {
+        await Reveal.init('test-key', {
+          configEndpoint: 'https://api.reveal.io/config',
+          ingestEndpoint: 'https://api.reveal.io/ingest',
+          decisionEndpoint: 'https://api.reveal.io/decide',
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+      })()).resolves.toBeUndefined();
+
+      // SDK should be functional (treatment assignment happens, just not persisted)
+      expect(() => {
+        Reveal.track('product', 'test_event');
+      }).not.toThrow();
+
+      // Cleanup
+      Reveal.destroy();
+    });
+  });
 });
 

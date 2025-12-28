@@ -45,6 +45,7 @@ export interface EventPipelineOptions {
   logger?: Logger;
   config?: Partial<EventPipelineConfig>;
   getCurrentLocation?: () => { path: string | null; route: string | null; screen: string | null };
+  sampledIn?: boolean; // Default: true (no sampling)
 }
 
 /**
@@ -76,7 +77,7 @@ export function createEventPipeline(
     getCurrentLocation = () => {
       // Default location getter (browser environment)
       if (typeof window !== "undefined" && window.location) {
-        return { 
+        return {
           path: window.location.pathname,
           route: null,
           screen: null,
@@ -89,6 +90,7 @@ export function createEventPipeline(
       };
     },
     config = {},
+    sampledIn = true, // Default: true (no sampling)
   } = options;
 
   // ──────────────────────────────────────────────────────────────────────
@@ -224,6 +226,12 @@ export function createEventPipeline(
       ...payloadWithoutOverlayContext
     } = (scrubbedPayload || {}) as Record<string, any>;
 
+    // Add cohort to payload (flows to BackendEventFormat.properties.cohort)
+    const cohort = session?.isTreatment === true ? "treatment" : session?.isTreatment === false ? "control" : null;
+    const payloadWithCohort = cohort
+      ? { ...payloadWithoutOverlayContext, cohort }
+      : payloadWithoutOverlayContext;
+
     // Build enriched event
     const enrichedEvent: BaseEvent = {
       // Event identification
@@ -269,8 +277,8 @@ export function createEventPipeline(
       viewport_height:
         typeof window !== "undefined" ? window.innerHeight : 0,
 
-      // Custom payload (transformed for nudge events, scrubbed of PII)
-      payload: payloadWithoutOverlayContext || {},
+      // Custom payload (transformed for nudge events, scrubbed of PII, with cohort)
+      payload: payloadWithCohort || {},
     };
 
     return enrichedEvent;
@@ -443,6 +451,17 @@ export function createEventPipeline(
       return null;
     }
 
+    // Early return if not sampled in (sampling only affects /ingest events)
+    if (!sampledIn) {
+      logger?.logDebug("Event dropped (not sampled in)", {
+        kind,
+        name,
+        sampledIn,
+        reason: "sampledIn gate returned false - event will NOT be enqueued or sent to /ingest"
+      });
+      return null;
+    }
+
     return safeTry(
       () => {
         logger?.logDebug("EventPipeline: capturing event", { kind, name, flushImmediately });
@@ -453,19 +472,16 @@ export function createEventPipeline(
         // DEBUG PROBE 2: Log event enqueued
         if (typeof window !== "undefined" && (window as any).__REVEAL_DEBUG__) {
           console.log("[REVEAL_DEBUG] Event enqueued:", {
-            event_kind: enrichedEvent.event_kind,
-            event_type: enrichedEvent.event_type,
-            friction_type: (enrichedEvent as any).friction_type || null,
+            kind: enrichedEvent.kind,
+            name: enrichedEvent.name,
             event_id: enrichedEvent.event_id,
+            cohort: (enrichedEvent.payload as any)?.cohort || null,
             flushImmediately,
           });
         }
 
         // Add to buffer
         eventBuffer.push(enrichedEvent);
-
-        // Return event_id for linking (e.g., friction events to decision requests)
-        return enrichedEvent.event_id || null;
 
         // Check if buffer size threshold reached
         logger?.logDebug("EventPipeline: buffer check", {
@@ -496,7 +512,7 @@ export function createEventPipeline(
           });
         }
 
-        // Return event_id for linking
+        // Return event_id for linking (e.g., friction events to decision requests)
         return enrichedEvent.event_id || null;
       },
       logger,

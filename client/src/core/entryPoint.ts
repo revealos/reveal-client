@@ -31,8 +31,88 @@ import { transformBaseEventToBackendFormat, type PageContext } from "../modules/
 import type { BaseEvent } from "../types/events";
 import type { FrictionSignal } from "../types/friction";
 import type { ClientConfig } from "../types/config";
+import { DEFAULT_FEATURES } from "../types/config";
 import type { WireNudgeDecision } from "../types/decisions";
 import type { EventKind, EventPayload } from "../types/events";
+
+// ──────────────────────────────────────────────────────────────────────
+// HELPER FUNCTIONS
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute sampling decision based on anonymousId and samplingRate
+ * Uses same hash algorithm as backend bucketing for consistency
+ * @param anonymousId - User identifier
+ * @param samplingRate - Sampling rate (0.0 to 1.0)
+ * @returns true if user is sampled in, false otherwise
+ */
+function computeSamplingDecision(anonymousId: string, samplingRate: number): boolean {
+  if (samplingRate >= 1.0) return true;
+  if (samplingRate <= 0.0) return false;
+
+  // Hash anonymousId (same algorithm as backend bucketing)
+  let hash = 0;
+  for (let i = 0; i < anonymousId.length; i++) {
+    const char = anonymousId.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  const bucket = Math.abs(hash) % 100;
+  return bucket < samplingRate * 100;
+}
+
+/**
+ * Compute treatment assignment from config rules
+ * Uses same hash-mod-100 bucketing algorithm as sampling
+ * @param params - anonymousId, sessionId, rules
+ * @returns "control" | "treatment" | null
+ */
+function computeTreatmentFromRules(params: {
+  anonymousId: string;
+  sessionId: string;
+  rules?: { sticky?: boolean; treatment_percentage?: number };
+}): "control" | "treatment" | null {
+  const { anonymousId, sessionId, rules } = params;
+
+  // No rules => no treatment assignment
+  if (!rules) return null;
+
+  const treatmentPercentage = rules.treatment_percentage ?? 0;
+  const sticky = rules.sticky ?? true;
+
+  // All control
+  if (treatmentPercentage <= 0) return "control";
+
+  // All treatment
+  if (treatmentPercentage >= 100) return "treatment";
+
+  // Probabilistic bucketing (same algorithm as computeSamplingDecision)
+  const bucketKey = sticky ? anonymousId : sessionId;
+
+  // Hash-mod-100 algorithm
+  let hash = 0;
+  for (let i = 0; i < bucketKey.length; i++) {
+    const char = bucketKey.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  const bucket = Math.abs(hash) % 100;
+
+  return bucket < treatmentPercentage ? "treatment" : "control";
+}
+
+/**
+ * Check if a template is enabled in the config
+ * @param templateId - Template identifier
+ * @param config - Client configuration
+ * @returns true if template is enabled, false otherwise
+ */
+function isTemplateEnabled(templateId: string, config: ClientConfig): boolean {
+  const features = config.features || DEFAULT_FEATURES;
+  const nudgeFlags = features.nudges || DEFAULT_FEATURES.nudges;
+  const enabled = nudgeFlags[templateId as keyof typeof nudgeFlags];
+  return enabled ?? true; // Default enabled
+}
 
 // Global singleton state (closure scope, not exposed)
 let isInitialized = false;
@@ -60,6 +140,9 @@ let isNudgeActive = false;
 // Cooldown duration: 2 seconds (gives backend time to process dismissal event)
 const NUDGE_DISMISSAL_COOLDOWN_MS = 2000;
 let nudgeDismissalCooldownUntil: number | null = null;
+
+// Track sampling decision (persistent across page reloads via localStorage)
+let sampledIn: boolean = true; // Default: true (no sampling)
 
 /**
  * Initialize the Reveal SDK
@@ -129,7 +212,12 @@ export async function init(
 
   // ORCHESTRATE: Async initialization flow
   safeTryAsync(async () => {
-    loggerRef.logDebug("Reveal SDK initializing.");
+    // Generate unique trace ID for this init call to detect duplicate instances
+    const initTraceId = typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `init-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    loggerRef.logDebug("Reveal SDK initializing.", { initTraceId });
 
     // ──────────────────────────────────────────────────────────────────────
     // RESOLVE INGEST ENDPOINT
@@ -208,29 +296,121 @@ export async function init(
           timeoutMs: 5000,
         });
 
-        loggerRef.logDebug("Fetching config from backend...");
-        
+        loggerRef.logDebug("Fetching config from backend...", { initTraceId, endpoint: configEndpoint });
+
         // Fetch config from backend
         clientConfig = await configClient.getConfig();
+
+        // TRACE: Log exact config fetch result
+        const fetchSuccess = clientConfig !== null;
+        const rawClientConfigKeys = clientConfig ? Object.keys(clientConfig) : [];
+        loggerRef.logDebug("Config fetch result", {
+          initTraceId,
+          fetchSuccess,
+          rawClientConfigKeys,
+          hasRawTreatmentRules: clientConfig?.treatment_rules !== undefined,
+          rawTreatmentRules: clientConfig?.treatment_rules,
+        });
+
         if (clientConfig) {
-          loggerRef.logDebug("Config fetched from backend", { projectId: clientConfig.projectId, environment: clientConfig.environment });
+          loggerRef.logDebug("Config fetched from backend", { initTraceId, projectId: clientConfig.projectId, environment: clientConfig.environment });
           console.log("[Reveal SDK] ✓ Config fetched from backend:", clientConfig);
         } else {
-          loggerRef.logWarn("Failed to fetch config from backend, using fallback minimalConfig");
+          loggerRef.logWarn("Failed to fetch config from backend, using fallback minimalConfig", { initTraceId });
           console.warn("[Reveal SDK] ⚠ Failed to fetch config from backend, using fallback minimalConfig");
         }
       } else {
-        loggerRef.logWarn("Config endpoint URL validation failed, using fallback minimalConfig", { error: configUrlValidation.error });
+        loggerRef.logWarn("Config endpoint URL validation failed, using fallback minimalConfig", { initTraceId, error: configUrlValidation.error });
         console.warn("[Reveal SDK] ⚠ Config endpoint URL validation failed:", configUrlValidation.error);
       }
     } catch (error: any) {
-      loggerRef.logWarn("Error during config fetch, using fallback minimalConfig", { error: error?.message || String(error) });
+      loggerRef.logWarn("Error during config fetch, using fallback minimalConfig", { initTraceId, error: error?.message || String(error) });
       console.error("[Reveal SDK] ✗ Error during config fetch:", error?.message || String(error));
       // Continue with minimalConfig fallback
     }
 
     // Use fetched config or fallback to minimalConfig
     const finalConfig: ClientConfig = clientConfig || minimalConfig;
+    const usingFallback = clientConfig === null;
+
+    // TRACE: Verify treatment_rules survived config validation
+    loggerRef.logDebug("Config fetched and merged", {
+      initTraceId,
+      usingFallback,
+      finalConfigKeys: Object.keys(finalConfig),
+      hasTreatmentRules: finalConfig.treatment_rules !== undefined,
+      treatmentRules: finalConfig.treatment_rules,
+      projectId: finalConfig.projectId,
+      clientKey,
+      decisionEndpoint: finalConfig.decision?.endpoint,
+      samplingRate: finalConfig.sdk?.samplingRate,
+    });
+
+    // WARN if using fallback and treatment assignment cannot run
+    if (usingFallback && !finalConfig.treatment_rules) {
+      loggerRef.logWarn("Using minimalConfig fallback without treatment_rules, treatment assignment will NOT run at init", {
+        initTraceId,
+        reason: clientConfig === null ? "config fetch failed" : "unknown",
+      });
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // STEP: Initialize anonymousId (persistent user identifier)
+    // Must be defined before computing sampling decision
+    // ──────────────────────────────────────────────────────────────────────
+    const anonymousId = getOrCreateAnonymousId();
+
+    // ──────────────────────────────────────────────────────────────────────
+    // COMPUTE SAMPLING DECISION (persistent across page reloads via localStorage)
+    // ──────────────────────────────────────────────────────────────────────
+    // SAFETY: Wrap sampling logic in safeTry - if fails, default to sampledIn = true (fail open)
+    const samplingResult = safeTry<boolean>(() => {
+      const samplingStorageKey = `reveal_sampled_in_${finalConfig.projectId}_${anonymousId}`;
+      let storedSampling: string | null = null;
+
+      // Best-effort localStorage read
+      try {
+        storedSampling = typeof localStorage !== "undefined" ? localStorage.getItem(samplingStorageKey) : null;
+      } catch {
+        // Ignore localStorage read errors
+      }
+
+      let computed: boolean;
+      if (storedSampling !== null) {
+        computed = storedSampling === "true";
+        loggerRef.logDebug("Sampling decision loaded from storage", { sampledIn: computed, samplingRate: finalConfig.sdk.samplingRate });
+      } else {
+        computed = computeSamplingDecision(anonymousId, finalConfig.sdk.samplingRate);
+
+        // Best-effort localStorage write
+        if (typeof localStorage !== "undefined") {
+          try {
+            localStorage.setItem(samplingStorageKey, String(computed));
+            loggerRef.logDebug("Sampling decision computed and persisted", { sampledIn: computed, samplingRate: finalConfig.sdk.samplingRate });
+          } catch (error) {
+            loggerRef.logWarn("Failed to persist sampling decision to localStorage", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
+
+      // DEBUG: Log sampling decision computation result
+      loggerRef.logDebug("Sampling decision computed", {
+        initTraceId,
+        projectId: finalConfig.projectId,
+        anonymousId,
+        samplingRate: finalConfig.sdk.samplingRate,
+        sampledIn: computed,
+        samplingStorageKey,
+        storedSampling,
+      });
+
+      return computed;
+    }, loggerRef, "Sampling decision") as boolean | undefined;
+
+    // If SafeTry failed, default to sampledIn = true (fail open - allow events)
+    sampledIn = samplingResult ?? true;
 
     // ──────────────────────────────────────────────────────────────────────
     // RESOLVE RELATIVE DECISION ENDPOINT TO FULL URL
@@ -263,10 +443,6 @@ export async function init(
       isInitialized = false; // Allow retry if desired
       return; // Exit early, no modules initialized
     }
-
-    // STEP: Initialize anonymousId (persistent user identifier)
-    // Must be defined before onFrictionSignal so it's available in the closure
-    const anonymousId = getOrCreateAnonymousId();
 
     // STEP 6: DetectorManager – friction detection
     // Friction signals may include semantic IDs in extra:
@@ -387,7 +563,35 @@ export async function init(
             frictionEventId: frictionEventId ?? undefined, // Link decision to friction event (convert null to undefined)
           });
 
+          // Extract treatment from backend decision
+          const backendTreatment = decisionClient.extractTreatmentFromDecision(decision);
+
+          // Allow backend to override if it differs from current session treatment
+          // Use explicit null check (backendTreatment !== null) to include "control"
+          if (backendTreatment !== null && sessionManager) {
+            const currentSession = sessionManager.getCurrentSession();
+            const currentTreatment = currentSession && currentSession.isTreatment === true
+              ? "treatment"
+              : currentSession && currentSession.isTreatment === false
+              ? "control"
+              : null;
+
+            if (backendTreatment !== currentTreatment) {
+              sessionManager.setTreatment(backendTreatment);
+              logger?.logDebug("Treatment overridden by backend decision", {
+                previous: currentTreatment,
+                new: backendTreatment,
+              });
+            }
+          }
+
           if (decision) {
+            // Check template gating (feature flags)
+            if (!isTemplateEnabled(decision.templateId, finalConfig)) {
+              logger?.logWarn("Nudge template disabled by feature flags", { templateId: decision.templateId });
+              return;
+            }
+
             isNudgeActive = true; // Mark nudge as active
             notifyNudgeSubscribers(decision);
           }
@@ -397,7 +601,83 @@ export async function init(
 
 
     // STEP: Initialize SessionManager (provides session context for decisions and events)
-    sessionManager = createSessionManager({ logger: loggerRef });
+    sessionManager = createSessionManager({
+      logger: loggerRef,
+      projectId: finalConfig.projectId,
+      anonymousId: anonymousId,
+      initTraceId, // Pass trace ID for session creation logging
+    });
+
+    // STEP: Assign treatment from config rules (before any events are tracked)
+    // SAFETY: Wrap treatment assignment in safeTry to prevent crashes from localStorage errors
+    safeTry(() => {
+      const currentSession = sessionManager?.getCurrentSession();
+      if (currentSession) {
+        // TRACE: Log treatment computation inputs
+        loggerRef.logDebug("Computing treatment from rules", {
+          initTraceId,
+          hasRules: finalConfig.treatment_rules !== undefined,
+          rules: finalConfig.treatment_rules,
+          anonymousId,
+          sessionId: currentSession.id,
+          projectId: finalConfig.projectId,
+        });
+
+        const treatment = computeTreatmentFromRules({
+          anonymousId,
+          sessionId: currentSession.id,
+          rules: finalConfig.treatment_rules,
+        });
+
+        // Assign treatment to session (creates localStorage key immediately)
+        if (treatment !== null && sessionManager) {
+          sessionManager.setTreatment(treatment);
+
+          // Confirm localStorage write (best-effort, may fail)
+          const storageKey = `reveal_treatment_${finalConfig.projectId}_${anonymousId}`;
+          let storedValue: string | null = null;
+          try {
+            storedValue = typeof localStorage !== "undefined" ? localStorage.getItem(storageKey) : null;
+          } catch {
+            // Ignore localStorage read errors
+          }
+
+          loggerRef.logDebug("Treatment assigned at init", {
+            initTraceId,
+            treatment,
+            sticky: finalConfig.treatment_rules?.sticky ?? true,
+            treatmentPercentage: finalConfig.treatment_rules?.treatment_percentage ?? 0,
+            projectId: finalConfig.projectId,
+            anonymousId,
+            storageKey,
+            storedValue,
+          });
+        } else {
+          // Treatment computation returned null
+          // Only WARN if BOTH (a) treatment_rules missing AND (b) session.isTreatment is null
+          // If treatmentLoaded is true (loaded from localStorage), log DEBUG instead
+          const treatmentLoaded = currentSession.isTreatment !== null;
+
+          if (!finalConfig.treatment_rules && !treatmentLoaded) {
+            loggerRef.logWarn("No treatment assigned (treatment_rules missing or returned null)", {
+              initTraceId,
+              hasTreatmentRules: finalConfig.treatment_rules !== undefined,
+              treatmentRules: finalConfig.treatment_rules,
+              projectId: finalConfig.projectId,
+              anonymousId,
+              treatmentLoaded,
+            });
+          } else {
+            loggerRef.logDebug("Treatment computation returned null (treatment already loaded from storage or rules missing)", {
+              initTraceId,
+              hasTreatmentRules: finalConfig.treatment_rules !== undefined,
+              treatmentLoaded,
+              isTreatment: currentSession.isTreatment,
+            });
+          }
+        }
+      }
+    }, loggerRef, "Treatment assignment");
 
     // STEP: Initialize event transformation (convert BaseEvent to backend format)
     // anonymousId already defined above (before onFrictionSignal)
@@ -436,10 +716,21 @@ export async function init(
         return;
       }
 
+      // DEBUG: Log EventPipeline creation options
+      loggerRef.logDebug("Creating EventPipeline with options", {
+        initTraceId,
+        sampledIn,
+        hasSessionManager: !!sessionManager,
+        hasTransport: !!transport,
+        configMaxFlushIntervalMs: 5000,
+        configMaxBufferSize: 1000,
+      });
+
       eventPipeline = createEventPipeline({
         sessionManager: sessionManager,
         transport: transport,
         logger: loggerRef,
+        sampledIn: sampledIn, // Apply sampling decision
         config: {
           maxFlushIntervalMs: 5000,
           maxBufferSize: 1000,

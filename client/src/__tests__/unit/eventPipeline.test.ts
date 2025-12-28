@@ -241,10 +241,45 @@ describe('EventPipeline', () => {
       expect(mockTransport.sendBatch).not.toHaveBeenCalled();
     });
 
+    it('should drop events when sampledIn is false', async () => {
+      // Create pipeline with sampledIn: false
+      const sampledOutPipeline = createEventPipeline({
+        sessionManager: mockSessionManager,
+        transport: mockTransport,
+        logger: mockLogger,
+        sampledIn: false, // KEY: sampling disabled
+      });
+
+      // Capture an event
+      const eventId = sampledOutPipeline.captureEvent('product', 'test_event', { key: 'value' });
+
+      // Event should be dropped (captureEvent returns null)
+      expect(eventId).toBeNull();
+
+      // Verify debug log was called with sampling message
+      expect(mockLogger.logDebug).toHaveBeenCalledWith(
+        'Event dropped (not sampled in)',
+        expect.objectContaining({
+          kind: 'product',
+          name: 'test_event',
+          sampledIn: false,
+        })
+      );
+
+      // Flush the pipeline
+      await sampledOutPipeline.flush(true);
+
+      // Transport.sendBatch should NOT be called (no events enqueued)
+      expect(mockTransport.sendBatch).not.toHaveBeenCalled();
+
+      // Cleanup
+      sampledOutPipeline.destroy();
+    });
+
     it('should ignore events after destroy', () => {
       pipeline.destroy();
       pipeline.captureEvent('product', 'test_event');
-      
+
       expect(mockLogger.logDebug).toHaveBeenCalledWith(
         'EventPipeline: destroyed, ignoring event'
       );
@@ -259,10 +294,10 @@ describe('EventPipeline', () => {
         success: true,
         customField: 'value',
       };
-      
+
       pipeline.captureEvent('product', 'test_event', payload);
       await pipeline.flush(true);
-      
+
       const sentEvents = (mockTransport.sendBatch as any).mock.calls[0][0] as BaseEvent[];
       expect(sentEvents.length).toBe(1);
       expect(sentEvents[0].payload.action_id).toBe('test_action');
@@ -271,6 +306,73 @@ describe('EventPipeline', () => {
       expect(sentEvents[0].payload.step).toBe(2);
       expect(sentEvents[0].payload.success).toBe(true);
       expect(sentEvents[0].payload.customField).toBe('value');
+    });
+
+    it('should inject cohort into product event payload when session.isTreatment is true', async () => {
+      // Session has isTreatment=true (from createMockSession)
+      pipeline.captureEvent('product', 'click', { action_id: 'button_clicked' });
+      await pipeline.flush(true);
+
+      const sentEvents = (mockTransport.sendBatch as any).mock.calls[0][0] as BaseEvent[];
+      expect(sentEvents.length).toBe(1);
+      expect(sentEvents[0].kind).toBe('product');
+      expect(sentEvents[0].name).toBe('click');
+      expect(sentEvents[0].payload.cohort).toBe('treatment');
+      expect(sentEvents[0].payload.action_id).toBe('button_clicked');
+    });
+
+    it('should inject cohort="control" when session.isTreatment is false', async () => {
+      // Override session to have isTreatment=false
+      const controlSession: Session = {
+        id: 'test-session-123',
+        isTreatment: false,
+        startedAt: Date.now() - 1000,
+        lastActivityAt: Date.now(),
+      };
+      (mockSessionManager.getCurrentSession as any).mockReturnValueOnce(controlSession);
+
+      pipeline.captureEvent('product', 'click', { action_id: 'button_clicked' });
+      await pipeline.flush(true);
+
+      const sentEvents = (mockTransport.sendBatch as any).mock.calls[0][0] as BaseEvent[];
+      expect(sentEvents.length).toBe(1);
+      expect(sentEvents[0].payload.cohort).toBe('control');
+    });
+
+    it('should omit cohort when session.isTreatment is null', async () => {
+      // Override session to have isTreatment=null
+      const nullSession: Session = {
+        id: 'test-session-123',
+        isTreatment: null,
+        startedAt: Date.now() - 1000,
+        lastActivityAt: Date.now(),
+      };
+      (mockSessionManager.getCurrentSession as any).mockReturnValueOnce(nullSession);
+
+      pipeline.captureEvent('product', 'click', { action_id: 'button_clicked' });
+      await pipeline.flush(true);
+
+      const sentEvents = (mockTransport.sendBatch as any).mock.calls[0][0] as BaseEvent[];
+      expect(sentEvents.length).toBe(1);
+      expect(sentEvents[0].payload.cohort).toBeUndefined();
+    });
+
+    it('should inject cohort into ALL event kinds (product, friction, nudge, session)', async () => {
+      // Capture all event kinds
+      pipeline.captureEvent('product', 'click', { action_id: 'btn' });
+      pipeline.captureEvent('friction', 'friction_stall', { selector: '#form' });
+      pipeline.captureEvent('nudge', 'nudge_shown', { nudgeId: 'n1' });
+      pipeline.captureEvent('session', 'session_start', {});
+
+      await pipeline.flush(true);
+
+      const sentEvents = (mockTransport.sendBatch as any).mock.calls[0][0] as BaseEvent[];
+      expect(sentEvents.length).toBe(4);
+
+      // All events should have cohort="treatment" (session.isTreatment=true from createMockSession)
+      sentEvents.forEach(event => {
+        expect(event.payload.cohort).toBe('treatment');
+      });
     });
   });
 
