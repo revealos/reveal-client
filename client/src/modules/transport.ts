@@ -48,6 +48,7 @@ export interface TransportOptions {
 export interface DecideRequestPayload {
   projectId: string;
   sessionId: string;
+  anonymousId?: string; // Persistent user identifier for treatment assignment
   friction: {
     type: "stall" | "rageclick" | "backtrack";
     pageUrl: string;
@@ -57,6 +58,7 @@ export interface DecideRequestPayload {
   };
   isNudgeActive?: boolean; // Client state: indicates if a nudge is currently active (for backend monitoring)
   frictionEventId?: string; // Link decision to friction event
+  trace_id?: string; // Trace correlation UUID from Reveal.requestTrace() (within 60s TTL)
 }
 
 /**

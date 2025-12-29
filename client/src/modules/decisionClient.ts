@@ -21,6 +21,7 @@ import type { WireNudgeDecision } from "../types/decisions";
 import type { Logger } from "../utils/logger";
 import type { Transport, DecideRequestPayload } from "./transport";
 import { scrubPII, scrubUrlPII } from "../security/dataSanitization";
+import { consumePendingTraceId } from "../internal/traceCorrelation";
 
 /**
  * DecisionClient options
@@ -169,7 +170,11 @@ export function createDecisionClient(
     signal: FrictionSignal,
     context: DecisionContext
   ): DecideRequestPayload {
-    return {
+    // Consume pending trace_id (if within TTL)
+    // Consume semantics: returns trace_id AND clears it, ensuring it's attached to at most one /decide call
+    const trace_id = consumePendingTraceId();
+
+    const payload: DecideRequestPayload = {
       // Project identification
       projectId: projectId || context.projectId,
 
@@ -197,6 +202,16 @@ export function createDecisionClient(
       // Link decision to friction event (for trigger_event_id in decision events)
       frictionEventId: context.frictionEventId,
     };
+
+    // Add trace_id if available (within 60s TTL after Reveal.requestTrace())
+    if (trace_id) {
+      payload.trace_id = trace_id;
+      logger?.logDebug("DecisionClient: attaching trace_id to /decide request", {
+        trace_id,
+      });
+    }
+
+    return payload;
   }
 
   // ──────────────────────────────────────────────────────────────────────

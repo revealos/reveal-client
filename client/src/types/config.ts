@@ -36,6 +36,9 @@ export interface ClientConfig {
       modal?: boolean; // Default: true
       banner?: boolean; // Default: true
     };
+    recording?: {
+      enabled?: boolean; // Default: false (BYOR trace request hooks)
+    };
   };
 
   // Treatment rules for A/B testing (optional, backward compatible)
@@ -60,5 +63,6 @@ export const DEFAULT_FEATURES = {
   enabled: true,
   detectors: { stall: true, rageclick: true, backtrack: true },
   nudges: { tooltip: true, inline_hint: true, spotlight: true, modal: true, banner: true },
+  recording: { enabled: false },
 };
 

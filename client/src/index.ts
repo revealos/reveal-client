@@ -8,10 +8,13 @@
  */
 
 // Import from entryPoint
-import { init, track, onNudgeDecision, destroy, startIdleWatch, stopIdleWatch, markContextClosed } from './core/entryPoint';
+import { init, track, onNudgeDecision, destroy, startIdleWatch, stopIdleWatch, markContextClosed, requestTrace, onTraceRequested } from './core/entryPoint';
 
 // Re-export types
 export * from './types';
+
+// Re-export recording types
+export type { TraceRequestContext, TraceRequestHandler } from './types/recording';
 
 // Re-export UI decision types and utilities (for React hooks and host apps)
 export { mapWireToUI } from './types/uiDecision';
@@ -35,4 +38,6 @@ export const Reveal = {
   startIdleWatch,
   stopIdleWatch,
   markContextClosed,
+  requestTrace,
+  onTraceRequested,
 };

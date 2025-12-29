@@ -34,6 +34,9 @@ import type { ClientConfig } from "../types/config";
 import { DEFAULT_FEATURES } from "../types/config";
 import type { WireNudgeDecision } from "../types/decisions";
 import type { EventKind, EventPayload } from "../types/events";
+import { storePendingTraceId } from "../internal/traceCorrelation";
+import { sanitizeReason, sanitizeMeta } from "../utils/sanitize";
+import type { TraceRequestHandler, TraceRequestContext } from "../types/recording";
 
 // ──────────────────────────────────────────────────────────────────────
 // HELPER FUNCTIONS
@@ -127,8 +130,14 @@ let detectorManager: DetectorManager | null = null;
 let decisionClient: DecisionClient | null = null;
 let logger: Logger | null = null;
 
+// Merged final config (includes init options.features merged with backend config)
+let mergedConfig: ClientConfig | null = null;
+
 // Nudge decision subscribers (host app callbacks)
 let nudgeSubscribers: Array<(decision: WireNudgeDecision) => void> = [];
+
+// Trace request subscribers (BYOR pattern)
+let traceSubscribers: TraceRequestHandler[] = [];
 
 // Track last decision ID for deduplication
 let lastDecisionId: string | null = null;
@@ -330,8 +339,18 @@ export async function init(
     }
 
     // Use fetched config or fallback to minimalConfig
-    const finalConfig: ClientConfig = clientConfig || minimalConfig;
+    const baseConfig: ClientConfig = clientConfig || minimalConfig;
     const usingFallback = clientConfig === null;
+
+    // Merge features from init options (local overrides remote)
+    // This ensures SDK features (like recording) can be enabled locally without backend changes
+    const finalConfig: ClientConfig = {
+      ...baseConfig,
+      features: options.features || baseConfig.features,
+    };
+
+    // Store merged config in closure for requestTrace() to access
+    mergedConfig = finalConfig;
 
     // TRACE: Verify treatment_rules survived config validation
     loggerRef.logDebug("Config fetched and merged", {
@@ -340,6 +359,8 @@ export async function init(
       finalConfigKeys: Object.keys(finalConfig),
       hasTreatmentRules: finalConfig.treatment_rules !== undefined,
       treatmentRules: finalConfig.treatment_rules,
+      hasFeatures: finalConfig.features !== undefined,
+      featuresRecording: finalConfig.features?.recording,
       projectId: finalConfig.projectId,
       clientKey,
       decisionEndpoint: finalConfig.decision?.endpoint,
@@ -893,6 +914,128 @@ export function onNudgeDecision(
 }
 
 /**
+ * Request a trace for the current session
+ *
+ * BYOR (Bring Your Own Recorder) pattern: This method generates a trace_id,
+ * notifies subscribers (so they can start their session recorder), and correlates
+ * the trace_id with the next /decide request within 60s TTL.
+ *
+ * @param options - Optional reason and metadata (primitives only, max 2KB)
+ * @returns trace_id (UUID) if recording enabled, null otherwise
+ *
+ * @example
+ * ```typescript
+ * // Manually request a trace
+ * const traceId = Reveal.requestTrace({
+ *   reason: 'user_reported_issue',
+ *   meta: { page: 'checkout', step: 2, isHighValue: true }
+ * });
+ * ```
+ */
+export function requestTrace(options?: {
+  reason?: string;
+  meta?: Record<string, string | number | boolean | null>;
+}): string | null {
+  if (isDisabled || !isInitialized) {
+    logger?.logWarn("requestTrace called before SDK initialization");
+    return null;
+  }
+
+  // Check if recording feature is enabled (use mergedConfig which includes init options.features)
+  const features = mergedConfig?.features || DEFAULT_FEATURES;
+  const recordingEnabled = features.recording?.enabled ?? DEFAULT_FEATURES.recording.enabled;
+
+  if (!recordingEnabled) {
+    logger?.logDebug("requestTrace called but recording feature disabled", {
+      hasMergedConfig: mergedConfig !== null,
+      features,
+      recordingEnabled,
+    });
+    return null;
+  }
+
+  // Generate trace_id (use crypto.randomUUID if available, fallback to timestamp-based UUID)
+  const traceId = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `trace-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+
+  // Sanitize inputs
+  const sanitizedReason = sanitizeReason(options?.reason);
+  const sanitizedMeta = sanitizeMeta(options?.meta) || {};
+
+  // Store trace_id for correlation with next /decide request (60s TTL)
+  storePendingTraceId(traceId, 60000);
+
+  // Emit trace_requested event to EventPipeline
+  if (eventPipeline) {
+    safeTry(() => {
+      eventPipeline?.captureEvent("session", "trace_requested", {
+        trace_id: traceId,
+        reason: sanitizedReason,
+        meta: sanitizedMeta,
+      });
+    });
+  }
+
+  // Notify subscribers (wrapped in safeTry to isolate errors)
+  const currentSession = sessionManager?.getCurrentSession();
+  const context: TraceRequestContext = {
+    traceId,
+    reason: sanitizedReason,
+    meta: sanitizedMeta,
+    sessionId: currentSession?.id || "unknown",
+    anonymousId: getOrCreateAnonymousId(),
+    projectId: mergedConfig?.projectId || "unknown",
+  };
+
+  for (const subscriber of traceSubscribers) {
+    safeTryAsync(async () => {
+      await subscriber(context);
+    });
+  }
+
+  logger?.logDebug("Trace requested", { traceId, reason: sanitizedReason });
+
+  return traceId;
+}
+
+/**
+ * Subscribe to trace requests
+ *
+ * BYOR (Bring Your Own Recorder) pattern: Use this to receive notifications
+ * when Reveal.requestTrace() is called, so you can start your session recorder
+ * (rrweb, LogRocket, etc.).
+ *
+ * @param handler - Callback function to receive trace request context
+ * @returns Unsubscribe function
+ *
+ * @example
+ * ```typescript
+ * const unsubscribe = Reveal.onTraceRequested(async (context) => {
+ *   console.log('Starting recording for trace:', context.traceId);
+ *   // Start your session recorder here
+ *   rrweb.record({ /* config *\/ });
+ * });
+ *
+ * // Later: unsubscribe
+ * unsubscribe();
+ * ```
+ */
+export function onTraceRequested(handler: TraceRequestHandler): () => void {
+  if (typeof handler !== "function") {
+    logger?.logWarn("onTraceRequested called with non-function handler");
+    return () => {};
+  }
+
+  traceSubscribers.push(handler);
+
+  // Return unsubscribe function
+  return () => {
+    traceSubscribers = traceSubscribers.filter((h) => h !== handler);
+  };
+}
+
+/**
  * Destroy the SDK instance and clean up resources
  */
 export function destroy(): void {
@@ -952,6 +1095,10 @@ function cleanup() {
   transport = null;
   detectorManager = null;
   decisionClient = null;
+
+  // Clear subscribers
+  nudgeSubscribers = [];
+  traceSubscribers = [];
 }
 
 /**
