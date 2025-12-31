@@ -36,7 +36,12 @@ import type { WireNudgeDecision } from "../types/decisions";
 import type { EventKind, EventPayload } from "../types/events";
 import { storePendingTraceId } from "../internal/traceCorrelation";
 import { sanitizeReason, sanitizeMeta } from "../utils/sanitize";
-import type { TraceRequestHandler, TraceRequestContext } from "../types/recording";
+import type { TraceRequestContext } from "../types/recording";
+import {
+  emitTraceRequested,
+  setTraceEventPipeline,
+  onTraceRequested as onTraceRequestedInternal
+} from "../internal/traceRequested";
 
 // ──────────────────────────────────────────────────────────────────────
 // HELPER FUNCTIONS
@@ -135,9 +140,6 @@ let mergedConfig: ClientConfig | null = null;
 
 // Nudge decision subscribers (host app callbacks)
 let nudgeSubscribers: Array<(decision: WireNudgeDecision) => void> = [];
-
-// Trace request subscribers (BYOR pattern)
-let traceSubscribers: TraceRequestHandler[] = [];
 
 // Track last decision ID for deduplication
 let lastDecisionId: string | null = null;
@@ -775,6 +777,9 @@ export async function init(
         },
       });
 
+      // Set EventPipeline reference for internal trace notification system
+      setTraceEventPipeline(eventPipeline);
+
       // Start periodic flush for automatic event sending
       safeTry(() => {
         eventPipeline?.startPeriodicFlush();
@@ -966,18 +971,7 @@ export function requestTrace(options?: {
   // Store trace_id for correlation with next /decide request (60s TTL)
   storePendingTraceId(traceId, 60000);
 
-  // Emit trace_requested event to EventPipeline
-  if (eventPipeline) {
-    safeTry(() => {
-      eventPipeline?.captureEvent("session", "trace_requested", {
-        trace_id: traceId,
-        reason: sanitizedReason,
-        meta: sanitizedMeta,
-      });
-    });
-  }
-
-  // Notify subscribers (wrapped in safeTry to isolate errors)
+  // Build trace request context
   const currentSession = sessionManager?.getCurrentSession();
   const context: TraceRequestContext = {
     traceId,
@@ -988,11 +982,8 @@ export function requestTrace(options?: {
     projectId: mergedConfig?.projectId || "unknown",
   };
 
-  for (const subscriber of traceSubscribers) {
-    safeTryAsync(async () => {
-      await subscriber(context);
-    });
-  }
+  // Emit trace request using shared internal module (handles EventPipeline + subscribers)
+  emitTraceRequested(context);
 
   logger?.logDebug("Trace requested", { traceId, reason: sanitizedReason });
 
@@ -1021,19 +1012,12 @@ export function requestTrace(options?: {
  * unsubscribe();
  * ```
  */
-export function onTraceRequested(handler: TraceRequestHandler): () => void {
-  if (typeof handler !== "function") {
-    logger?.logWarn("onTraceRequested called with non-function handler");
-    return () => {};
-  }
-
-  traceSubscribers.push(handler);
-
-  // Return unsubscribe function
-  return () => {
-    traceSubscribers = traceSubscribers.filter((h) => h !== handler);
-  };
-}
+/**
+ * Subscribe to trace request events (manual or backend-driven)
+ *
+ * Exported from internal module to share subscribers between requestTrace() and DecisionClient.
+ */
+export const onTraceRequested = onTraceRequestedInternal;
 
 /**
  * Destroy the SDK instance and clean up resources
@@ -1098,7 +1082,7 @@ function cleanup() {
 
   // Clear subscribers
   nudgeSubscribers = [];
-  traceSubscribers = [];
+  // Note: traceSubscribers managed by internal/traceRequested module
 }
 
 /**

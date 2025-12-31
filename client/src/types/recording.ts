@@ -49,3 +49,46 @@ export interface TraceRequestContext {
 export type TraceRequestHandler = (
   context: TraceRequestContext
 ) => void | Promise<void>;
+
+/**
+ * Options for uploading a session recording (Phase 2)
+ */
+export interface RecordingUploadOptions {
+  /** Project ID */
+  projectId: string;
+
+  /** Session ID */
+  sessionId: string;
+
+  /** Trace ID from Reveal.requestTrace() */
+  traceId: string;
+
+  /** Recording blob (rrweb events, video, etc.) */
+  blob: Blob;
+
+  /** Human-readable reason (max 64 chars) */
+  reason?: string;
+
+  /** Primitives-only metadata (max 2KB) */
+  meta?: Record<string, string | number | boolean | null>;
+
+  /** API base URL (e.g., https://api.revealos.com) */
+  apiBaseUrl: string;
+
+  /** Client API key */
+  clientKey: string;
+}
+
+/**
+ * Result of recording upload
+ */
+export interface RecordingUploadResult {
+  /** Whether upload succeeded */
+  success: boolean;
+
+  /** Recording ID if successful */
+  recordingId?: string;
+
+  /** Error message if failed */
+  error?: string;
+}

@@ -22,6 +22,8 @@ import type { Logger } from "../utils/logger";
 import type { Transport, DecideRequestPayload } from "./transport";
 import { scrubPII, scrubUrlPII } from "../security/dataSanitization";
 import { consumePendingTraceId } from "../internal/traceCorrelation";
+import { emitTraceRequested } from "../internal/traceRequested";
+import type { TraceRequestContext } from "../types/recording";
 
 /**
  * DecisionClient options
@@ -150,6 +152,32 @@ export function createDecisionClient(
         });
       } else {
         logger?.logDebug("DecisionClient: no valid decision returned");
+      }
+
+      // ────────────────────────────────────────────────────────────────
+      // CHECK FOR BACKEND-DRIVEN TRACE REQUEST
+      // ────────────────────────────────────────────────────────────────
+      if (response?.shouldTrace && response?.traceId) {
+        logger?.logDebug("DecisionClient: backend requested trace recording", {
+          traceId: response.traceId,
+          reason: response.traceReason,
+        });
+
+        // Build trace context for subscribers
+        const traceContext: TraceRequestContext = {
+          traceId: response.traceId,
+          reason: response.traceReason || 'backend_requested',
+          meta: {
+            frictionType: signal.type,
+            autoTriggered: true,
+          },
+          sessionId: context.sessionId,
+          anonymousId: context.anonymousId || '',
+          projectId: context.projectId,
+        };
+
+        // Emit trace request using shared internal module
+        emitTraceRequested(traceContext);
       }
 
       return decision;

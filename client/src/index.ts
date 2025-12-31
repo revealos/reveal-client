@@ -13,8 +13,16 @@ import { init, track, onNudgeDecision, destroy, startIdleWatch, stopIdleWatch, m
 // Re-export types
 export * from './types';
 
-// Re-export recording types
-export type { TraceRequestContext, TraceRequestHandler } from './types/recording';
+// Re-export recording types (Phase 1 + Phase 2)
+export type {
+  TraceRequestContext,
+  TraceRequestHandler,
+  RecordingUploadOptions,
+  RecordingUploadResult
+} from './types/recording';
+
+// Re-export recording upload helper (Phase 2)
+export { uploadRecording } from './modules/recordingUpload';
 
 // Re-export UI decision types and utilities (for React hooks and host apps)
 export { mapWireToUI } from './types/uiDecision';

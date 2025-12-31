@@ -37,7 +37,8 @@ export interface ClientConfig {
       banner?: boolean; // Default: true
     };
     recording?: {
-      enabled?: boolean; // Default: false (BYOR trace request hooks)
+      enabled?: boolean; // Default: false (BYOR trace request hooks - Phase 1)
+      uploadEnabled?: boolean; // Reserved for future use (not currently checked - uploadRecording() always available when enabled=true)
     };
   };
 
@@ -63,6 +64,6 @@ export const DEFAULT_FEATURES = {
   enabled: true,
   detectors: { stall: true, rageclick: true, backtrack: true },
   nudges: { tooltip: true, inline_hint: true, spotlight: true, modal: true, banner: true },
-  recording: { enabled: false },
+  recording: { enabled: false, uploadEnabled: false },
 };
 

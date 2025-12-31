@@ -6,10 +6,29 @@ Reveal SDK provides a **BYOR (Bring Your Own Recorder)** pattern for session rec
 
 **Key Features:**
 - Manual trace requests via `Reveal.requestTrace()`
-- Automatic trace_id correlation with friction events
+- Manual trace_id correlation with friction events (via requestTrace + TTL)
 - SOC2-compliant metadata (primitives only, size limits)
 - 60-second TTL for trace correlation
 - Subscriber pattern for starting/stopping recorders
+
+## Backend-Driven Recording
+
+The backend may instruct the SDK to begin recording by returning:
+
+```json
+{
+  "shouldTrace": true,
+  "traceId": "...",
+  "traceReason": "..."
+}
+```
+
+This mechanism allows server-side logic to control when recordings occur.
+
+**Note:**
+- The decision logic is internal to the backend
+- Clients should treat `shouldTrace` as an opaque signal
+- Recording behavior may change without client updates
 
 ## Architecture
 
@@ -452,30 +471,112 @@ meta: { userName: 'Alice' }
 
 ## Phase 2: Upload Infrastructure
 
-**Status:** Not implemented in Phase 1
+**Status:** ✅ Implemented
 
-**Planned features:**
-- `uploadRecording()` helper
-- `recordings` table in backend
-- Supabase Storage integration
-- 30-day retention policy
+### `uploadRecording(options)`
 
-**Example (Phase 2):**
+Upload a session recording to Reveal backend. Implements 3-step upload flow: init → upload → complete.
+
+**Parameters:**
+- `options.projectId` (string, required): Project ID
+- `options.sessionId` (string, required): Session ID
+- `options.traceId` (string, required): Trace ID from `Reveal.requestTrace()` or backend `shouldTrace` response
+- `options.blob` (Blob, required): Recording blob (rrweb events, video, etc.)
+- `options.reason` (string, optional): Human-readable reason (max 64 chars)
+- `options.meta` (object, optional): Primitives-only metadata (max 2KB)
+- `options.apiBaseUrl` (string, required): API base URL (e.g., `https://api.revealos.com`)
+- `options.clientKey` (string, required): Client API key
+
+**Returns:** `Promise<RecordingUploadResult>`
+- `success` (boolean): Whether upload succeeded
+- `recordingId` (string, optional): Recording ID if successful
+- `error` (string, optional): Error message if failed
+
+**Example:**
 ```typescript
-// Will be available in Phase 2
-const result = await Reveal.uploadRecording({
-  traceId: context.traceId,
-  blob: recordingBlob,
-  reason: 'user_bug_report',
+import { uploadRecording } from '@reveal/client';
+
+// Inside your onTraceRequested handler
+Reveal.onTraceRequested(async (context) => {
+  // Start recording (rrweb)
+  const events: any[] = [];
+  const stopRecording = rrweb.record({
+    emit(event) { events.push(event); },
+    blockSelector: '[data-private]',
+    maskAllInputs: true,
+  });
+
+  // Auto-stop after 10 seconds
+  setTimeout(async () => {
+    stopRecording();
+
+    // Convert events to blob
+    const recordingBlob = new Blob(
+      [JSON.stringify(events)],
+      { type: 'application/json' }
+    );
+
+    // Upload to backend
+    const result = await uploadRecording({
+      projectId: context.projectId,
+      sessionId: context.sessionId,
+      traceId: context.traceId,
+      blob: recordingBlob,
+      reason: context.reason,
+      meta: context.meta,
+      apiBaseUrl: 'https://api.revealos.com',
+      clientKey: 'your-client-key',
+    });
+
+    if (result.success) {
+      console.log('[Upload] Recording uploaded:', result.recordingId);
+    } else {
+      console.error('[Upload] Failed:', result.error);
+    }
+  }, 10000);
+});
+```
+
+### Upload Flow
+
+1. **Init**: SDK calls `POST /recordings/init` to create metadata and get signed upload URL
+2. **Upload**: SDK uploads blob to signed URL via `PUT` request
+3. **Complete**: SDK calls `POST /recordings/complete` to mark recording as ready
+
+### Retention
+
+- Default: 30 days from creation
+- Enforced at recording creation time
+- Cleanup job deferred to post-MVP
+
+### Feature Flags
+
+Enable upload functionality via config:
+
+```typescript
+Reveal.init('your-client-key', {
+  features: {
+    recording: {
+      enabled: true,          // Phase 1: Trace requests
+      uploadEnabled: true,    // Reserved for future use (not currently checked)
+    },
+  },
 });
 ```
 
 ## Summary
 
+### Phase 1: Trace Requests + BYOR Pattern
 - ✅ Use `Reveal.requestTrace()` for manual trace requests
 - ✅ Use `Reveal.onTraceRequested()` to start your recorder
 - ✅ Primitives-only metadata (no nested objects, max 2KB)
 - ✅ 60-second TTL for trace correlation
 - ✅ One-time consume semantics
 - ✅ SOC2-compliant (size limits, sanitization)
-- ❌ Upload infrastructure not in Phase 1 (planned for Phase 2)
+
+### Phase 2: Upload Infrastructure
+- ✅ Use `uploadRecording()` to upload recordings to backend
+- ✅ 3-step upload flow (init → upload → complete)
+- ✅ Supabase Storage integration
+- ✅ 30-day retention policy
+- ✅ Upload always available when `recording.enabled=true` (`uploadEnabled` flag reserved for future use)
