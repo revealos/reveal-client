@@ -45,7 +45,9 @@ export class RevealTooltipNudge extends HTMLElementBase {
   private _animation: Animation | null = null;
   private _isShown: boolean = false;
   private _isRendered: boolean = false;
+  private _isExiting: boolean = false;
   private _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private _exitAnimationEndHandler: ((e: AnimationEvent) => void) | null = null;
 
   constructor() {
     super();
@@ -57,9 +59,16 @@ export class RevealTooltipNudge extends HTMLElementBase {
   }
 
   set decision(value: NudgeDecision | null) {
+    // If decision becomes null and component is rendered, start exit animation
+    if (value === null && this._isRendered && !this._isExiting) {
+      this.startExit();
+      return;
+    }
+
     this._decision = value;
     this._isRendered = false; // Reset render flag when decision changes
     this._isShown = false; // Reset shown flag for new decision
+    this._isExiting = false; // Reset exiting flag for new decision
     this._render();
   }
 
@@ -132,6 +141,50 @@ export class RevealTooltipNudge extends HTMLElementBase {
           color: #ffffff;
           text-align: center;
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Ubuntu', 'Open Sans', 'Helvetica Neue', sans-serif;
+          /* Entry animation */
+          opacity: 0;
+          transform: scale(0.9);
+          animation: zoomIn 300ms ease-out forwards;
+        }
+
+        @keyframes zoomIn {
+          from {
+            opacity: 0;
+            transform: scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        .tooltip-container.exiting {
+          animation: zoomOut 300ms ease-in forwards;
+        }
+
+        @keyframes zoomOut {
+          from {
+            opacity: 1;
+            transform: scale(1);
+          }
+          to {
+            opacity: 0;
+            transform: scale(0.9);
+          }
+        }
+
+        /* Respect reduced motion preference */
+        @media (prefers-reduced-motion: reduce) {
+          .tooltip-container {
+            animation: none;
+            opacity: 1;
+            transform: scale(1);
+          }
+          .tooltip-container.exiting {
+            animation: none;
+            opacity: 0;
+            transform: scale(0.9);
+          }
         }
 
         .tooltip-title {
@@ -407,6 +460,74 @@ export class RevealTooltipNudge extends HTMLElementBase {
     );
   }
 
+  startExit(): void {
+    // Idempotency guard: if already exiting, ignore
+    if (this._isExiting) {
+      return;
+    }
+
+    this._isExiting = true;
+
+    // Get container element
+    const container = this._tooltipElement;
+    if (!container) {
+      // If container doesn't exist, dispatch exit-complete immediately
+      this.dispatchEvent(
+        new CustomEvent("reveal:exit-complete", {
+          bubbles: true,
+          composed: true,
+        })
+      );
+      return;
+    }
+
+    // Check for reduced motion preference
+    let shouldAnimate = true;
+    try {
+      if (typeof window.matchMedia === "function") {
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (reduceMotion) {
+          shouldAnimate = false;
+        }
+      }
+    } catch {
+      // If matchMedia fails, proceed with animation
+    }
+
+    if (!shouldAnimate) {
+      // Skip animation, dispatch immediately
+      this.dispatchEvent(
+        new CustomEvent("reveal:exit-complete", {
+          bubbles: true,
+          composed: true,
+        })
+      );
+      return;
+    }
+
+    // Add exiting class to trigger exit animation
+    container.classList.add("exiting");
+
+    // Listen for animation end
+    this._exitAnimationEndHandler = (e: AnimationEvent) => {
+      // Only handle animation end for the container element
+      if (e.target === container && e.animationName === "zoomOut") {
+        container.removeEventListener("animationend", this._exitAnimationEndHandler!);
+        this._exitAnimationEndHandler = null;
+
+        // Dispatch exit-complete event
+        this.dispatchEvent(
+          new CustomEvent("reveal:exit-complete", {
+            bubbles: true,
+            composed: true,
+          })
+        );
+      }
+    };
+
+    container.addEventListener("animationend", this._exitAnimationEndHandler);
+  }
+
   private _cleanup() {
     if (this._autoDismissTimeout) {
       clearTimeout(this._autoDismissTimeout);
@@ -423,6 +544,10 @@ export class RevealTooltipNudge extends HTMLElementBase {
     if (this._keydownHandler) {
       window.removeEventListener("keydown", this._keydownHandler);
       this._keydownHandler = null;
+    }
+    if (this._exitAnimationEndHandler && this._tooltipElement) {
+      this._tooltipElement.removeEventListener("animationend", this._exitAnimationEndHandler);
+      this._exitAnimationEndHandler = null;
     }
     window.removeEventListener("resize", this._handleResize);
   }

@@ -24,6 +24,8 @@ export class RevealOverlayManager extends HTMLElementBase {
   private _shadowRoot: ShadowRoot;
   private _currentTemplate: HTMLElement | null = null;
   private _isRendered: boolean = false;
+  private _exitListener: ((e: Event) => void) | null = null;
+  private _exitTimeout: number | null = null;
 
   constructor() {
     super();
@@ -63,10 +65,44 @@ export class RevealOverlayManager extends HTMLElementBase {
       return;
     }
 
-    // Clear existing template
+    // Handle exit lifecycle: if decision is null and template exists, start exit animation
+    if (!this._decision && this._currentTemplate) {
+      // Clear any existing exit listener
+      if (this._exitListener) {
+        this._currentTemplate.removeEventListener("reveal:exit-complete", this._exitListener);
+        this._exitListener = null;
+      }
+      if (this._exitTimeout) {
+        clearTimeout(this._exitTimeout);
+        this._exitTimeout = null;
+      }
+
+      // Try to call startExit() if the template supports it
+      const template = this._currentTemplate as any;
+      if (typeof template.startExit === "function") {
+        // Set up exit listener
+        this._exitListener = () => {
+          this._removeTemplate();
+        };
+        this._currentTemplate.addEventListener("reveal:exit-complete", this._exitListener, { once: true });
+
+        // Fallback timeout: if exit-complete never fires (legacy component), remove after 500ms
+        this._exitTimeout = window.setTimeout(() => {
+          this._removeTemplate();
+        }, 500);
+
+        // Start exit animation
+        template.startExit();
+      } else {
+        // Legacy component without exit support - remove immediately
+        this._removeTemplate();
+      }
+      return;
+    }
+
+    // Clear existing template (if we get here, we're rendering a new decision)
     if (this._currentTemplate) {
-      this._currentTemplate.remove();
-      this._currentTemplate = null;
+      this._removeTemplate();
     }
 
     if (!this._decision) {
@@ -179,6 +215,24 @@ export class RevealOverlayManager extends HTMLElementBase {
     `;
 
     this._shadowRoot.appendChild(debugOverlay);
+  }
+
+  private _removeTemplate() {
+    // Clean up exit listener
+    if (this._exitListener && this._currentTemplate) {
+      this._currentTemplate.removeEventListener("reveal:exit-complete", this._exitListener);
+      this._exitListener = null;
+    }
+    if (this._exitTimeout) {
+      clearTimeout(this._exitTimeout);
+      this._exitTimeout = null;
+    }
+
+    // Remove template
+    if (this._currentTemplate) {
+      this._currentTemplate.remove();
+      this._currentTemplate = null;
+    }
   }
 }
 

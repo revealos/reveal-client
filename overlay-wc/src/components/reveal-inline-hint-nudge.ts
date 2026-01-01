@@ -27,12 +27,14 @@ export class RevealInlineHintNudge extends HTMLElementBase {
   private _isRendered = false;
   private _isShown = false;
   private _isDismissed = false; // Idempotency guard
+  private _isExiting = false;
 
   // Event handler references for cleanup
   private _clickHandler: ((e: MouseEvent) => void) | null = null;
   private _focusHandler: ((e: FocusEvent) => void) | null = null;
   private _scrollHandler: (() => void) | null = null;
   private _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private _exitAnimationEndHandler: ((e: AnimationEvent) => void) | null = null;
 
   constructor() {
     super();
@@ -46,10 +48,17 @@ export class RevealInlineHintNudge extends HTMLElementBase {
   }
 
   set decision(value: NudgeDecision | null) {
+    // If decision becomes null and component is rendered, start exit animation
+    if (value === null && this._isRendered && !this._isExiting) {
+      this.startExit();
+      return;
+    }
+
     this._decision = value;
     this._isRendered = false;
     this._isShown = false;
     this._isDismissed = false;
+    this._isExiting = false;
     this._render();
   }
 
@@ -113,17 +122,35 @@ export class RevealInlineHintNudge extends HTMLElementBase {
 
           pointer-events: auto;
 
-          /* Fade-in animation */
+          /* Entry animation - zoom-in */
           opacity: 0;
-          animation: fadeIn 400ms ease-out forwards;
+          transform: scale(0.9);
+          animation: zoomIn 300ms ease-out forwards;
         }
 
-        @keyframes fadeIn {
+        @keyframes zoomIn {
           from {
             opacity: 0;
+            transform: scale(0.9);
           }
           to {
             opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        .inline-hint-container.exiting {
+          animation: zoomOut 300ms ease-in forwards;
+        }
+
+        @keyframes zoomOut {
+          from {
+            opacity: 1;
+            transform: scale(1);
+          }
+          to {
+            opacity: 0;
+            transform: scale(0.9);
           }
         }
 
@@ -132,6 +159,12 @@ export class RevealInlineHintNudge extends HTMLElementBase {
           .inline-hint-container {
             animation: none;
             opacity: 1;
+            transform: scale(1);
+          }
+          .inline-hint-container.exiting {
+            animation: none;
+            opacity: 0;
+            transform: scale(0.9);
           }
         }
 
@@ -237,6 +270,74 @@ export class RevealInlineHintNudge extends HTMLElementBase {
     );
   }
 
+  startExit(): void {
+    // Idempotency guard: if already exiting, ignore
+    if (this._isExiting) {
+      return;
+    }
+
+    this._isExiting = true;
+
+    // Get container element
+    const container = this._shadowRoot.querySelector('.inline-hint-container') as HTMLElement;
+    if (!container) {
+      // If container doesn't exist, dispatch exit-complete immediately
+      this.dispatchEvent(
+        new CustomEvent("reveal:exit-complete", {
+          bubbles: true,
+          composed: true,
+        })
+      );
+      return;
+    }
+
+    // Check for reduced motion preference
+    let shouldAnimate = true;
+    try {
+      if (typeof window.matchMedia === "function") {
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (reduceMotion) {
+          shouldAnimate = false;
+        }
+      }
+    } catch {
+      // If matchMedia fails, proceed with animation
+    }
+
+    if (!shouldAnimate) {
+      // Skip animation, dispatch immediately
+      this.dispatchEvent(
+        new CustomEvent("reveal:exit-complete", {
+          bubbles: true,
+          composed: true,
+        })
+      );
+      return;
+    }
+
+    // Add exiting class to trigger exit animation
+    container.classList.add("exiting");
+
+    // Listen for animation end
+    this._exitAnimationEndHandler = (e: AnimationEvent) => {
+      // Only handle animation end for the container element
+      if (e.target === container && e.animationName === "zoomOut") {
+        container.removeEventListener("animationend", this._exitAnimationEndHandler!);
+        this._exitAnimationEndHandler = null;
+
+        // Dispatch exit-complete event
+        this.dispatchEvent(
+          new CustomEvent("reveal:exit-complete", {
+            bubbles: true,
+            composed: true,
+          })
+        );
+      }
+    };
+
+    container.addEventListener("animationend", this._exitAnimationEndHandler);
+  }
+
   private _cleanup() {
     if (this._clickHandler) {
       document.removeEventListener("click", this._clickHandler, true);
@@ -249,6 +350,11 @@ export class RevealInlineHintNudge extends HTMLElementBase {
     }
     if (this._keydownHandler) {
       window.removeEventListener("keydown", this._keydownHandler);
+    }
+    const container = this._shadowRoot.querySelector('.inline-hint-container') as HTMLElement;
+    if (this._exitAnimationEndHandler && container) {
+      container.removeEventListener("animationend", this._exitAnimationEndHandler);
+      this._exitAnimationEndHandler = null;
     }
   }
 

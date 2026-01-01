@@ -31,6 +31,7 @@ export class RevealSpotlight extends HTMLElementBase {
   private _isRendered = false;
   private _isShown = false;
   private _isDismissed = false; // Idempotency guard
+  private _isExiting = false;
 
   private _targetRect: DOMRect | null = null;
   private _resizeHandler: (() => void) | null = null;
@@ -40,6 +41,7 @@ export class RevealSpotlight extends HTMLElementBase {
   private _scrollHandler: (() => void) | null = null;
   private _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private _targetElement: Element | null = null;
+  private _exitAnimationEndHandler: ((e: AnimationEvent) => void) | null = null;
 
   constructor() {
     super();
@@ -139,11 +141,24 @@ export class RevealSpotlight extends HTMLElementBase {
           to { opacity: 1; }
         }
 
+        .spotlight-scrim.exiting {
+          animation: fadeOut 250ms ease-in forwards;
+        }
+
+        @keyframes fadeOut {
+          from { opacity: 1; }
+          to { opacity: 0; }
+        }
+
         /* Respect reduced motion */
         @media (prefers-reduced-motion: reduce) {
           .spotlight-scrim {
             animation: none;
             opacity: 1;
+          }
+          .spotlight-scrim.exiting {
+            animation: none;
+            opacity: 0;
           }
         }
 
@@ -370,6 +385,74 @@ export class RevealSpotlight extends HTMLElementBase {
     );
   }
 
+  startExit(): void {
+    // Idempotency guard: if already exiting, ignore
+    if (this._isExiting) {
+      return;
+    }
+
+    this._isExiting = true;
+
+    // Get scrim element
+    const scrim = this._shadowRoot.querySelector('.spotlight-scrim') as HTMLElement;
+    if (!scrim) {
+      // If scrim doesn't exist, dispatch exit-complete immediately
+      this.dispatchEvent(
+        new CustomEvent("reveal:exit-complete", {
+          bubbles: true,
+          composed: true,
+        })
+      );
+      return;
+    }
+
+    // Check for reduced motion preference
+    let shouldAnimate = true;
+    try {
+      if (typeof window.matchMedia === "function") {
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (reduceMotion) {
+          shouldAnimate = false;
+        }
+      }
+    } catch {
+      // If matchMedia fails, proceed with animation
+    }
+
+    if (!shouldAnimate) {
+      // Skip animation, dispatch immediately
+      this.dispatchEvent(
+        new CustomEvent("reveal:exit-complete", {
+          bubbles: true,
+          composed: true,
+        })
+      );
+      return;
+    }
+
+    // Add exiting class to trigger exit animation
+    scrim.classList.add("exiting");
+
+    // Listen for animation end
+    this._exitAnimationEndHandler = (e: AnimationEvent) => {
+      // Only handle animation end for the scrim element
+      if (e.target === scrim && e.animationName === "fadeOut") {
+        scrim.removeEventListener("animationend", this._exitAnimationEndHandler!);
+        this._exitAnimationEndHandler = null;
+
+        // Dispatch exit-complete event
+        this.dispatchEvent(
+          new CustomEvent("reveal:exit-complete", {
+            bubbles: true,
+            composed: true,
+          })
+        );
+      }
+    };
+
+    scrim.addEventListener("animationend", this._exitAnimationEndHandler);
+  }
+
   private _cleanup() {
     if (this._clickHandler) {
       document.removeEventListener("click", this._clickHandler, true);
@@ -389,6 +472,11 @@ export class RevealSpotlight extends HTMLElementBase {
     if (this._resizeHandler) {
       window.removeEventListener("resize", this._resizeHandler);
     }
+    const scrim = this._shadowRoot.querySelector('.spotlight-scrim') as HTMLElement;
+    if (this._exitAnimationEndHandler && scrim) {
+      scrim.removeEventListener("animationend", this._exitAnimationEndHandler);
+      this._exitAnimationEndHandler = null;
+    }
 
     // Clear target reference
     this._targetElement = null;
@@ -405,10 +493,17 @@ export class RevealSpotlight extends HTMLElementBase {
   }
 
   set decision(value: NudgeDecision | null) {
+    // If decision becomes null and component is rendered, start exit animation
+    if (value === null && this._isRendered && !this._isExiting) {
+      this.startExit();
+      return;
+    }
+
     this._decision = value;
     this._isRendered = false;
     this._isShown = false;
     this._isDismissed = false;
+    this._isExiting = false;
     this._targetElement = null; // Clear stale reference
     this._render();
   }
