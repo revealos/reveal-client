@@ -48,6 +48,14 @@ export interface ClientConfig {
     treatment_percentage?: number; // Default: 0 (0-100, percent in treatment group)
   };
 
+  // Progress timeout rules for no_progress detector (optional, default: disabled)
+  progress_timeout_rules?: {
+    enabled: boolean;
+    timeout_seconds: number;
+    hard_timeout_seconds?: number;
+    progress_event_names: string[];
+  };
+
   templates: any[];
   ttlSeconds: number;
 }

@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Anonymous ID Management**: Added persistent anonymous user identification via `anonymousId` utility. Anonymous ID is stored in `localStorage` and persists across browser sessions for user tracking.
 - **EventTransformer Module**: New module (`packages/client/src/modules/eventTransformer.ts`) that converts SDK internal event format to wire format, including field name mapping, timestamp conversion, and page context extraction.
 - **Event Format Standardization**: Events now include required wire format fields: `event_id` (UUID), `event_kind`, `event_type`, `anonymous_id`, `sdk_version`, and proper ISO 8601 timestamps.
+- **No Progress Detector**: New friction detector that monitors lack of progress based on product events. Detects when no progress events occur within configured timeout period. Configurable via `progress_timeout_rules` in client config. Feature disabled by default (`enabled: false`). Detector watches for product events matching `progress_event_names` and emits `friction_no_progress` signal when timeout is reached. Supports optional `hard_timeout_seconds` for higher confidence detection.
 
 ### Changed
 - **Transport Module**: Now accepts optional `transformEvent` function to transform events before sending. If provided, events are transformed to wire format. If not provided, events are sent as-is (backward compatibility).

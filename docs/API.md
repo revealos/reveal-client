@@ -71,8 +71,22 @@ During initialization, the SDK fetches configuration from the backend `/config` 
 | `treatment_rules.treatment_percentage` | `number` | Percentage of users assigned to treatment group (0-100). Uses hash-mod-100 bucketing. |
 | `decision.endpoint` | `string` | Decision endpoint path (may be relative like `/decide`) |
 | `decision.timeoutMs` | `number` | Decision timeout in milliseconds |
+| `progress_timeout_rules` | `object \| undefined` | Progress timeout detector configuration (optional, disabled by default) |
+| `progress_timeout_rules.enabled` | `boolean` | Whether progress timeout detector is enabled. Default: `false` |
+| `progress_timeout_rules.timeout_seconds` | `number` | Timeout threshold in seconds. Detector emits `friction_no_progress` if no progress events occur within this duration |
+| `progress_timeout_rules.hard_timeout_seconds` | `number \| undefined` | Optional hard timeout threshold for higher confidence detection |
+| `progress_timeout_rules.progress_event_names` | `string[]` | Array of product event names that count as progress (e.g., `["card_created", "card_updated"]`). Detector monitors these events and resets timer when they occur |
 | `templates` | `array` | Nudge templates (empty array for client config - templates are backend-only) |
 | `ttlSeconds` | `number` | Config cache TTL in seconds |
+
+**Progress Timeout Detector:**
+- Feature is **disabled by default** (`enabled: false`)
+- When enabled, detector monitors product events matching `progress_event_names`
+- Timer starts from detector initialization (or last matching progress event)
+- If no matching progress events occur within `timeout_seconds`, emits `friction_no_progress` signal
+- Progress events reset the timer, preventing false positives during active usage
+- Supports optional `hard_timeout_seconds` for higher confidence detection (e.g., for critical flows)
+- Detector observes events via EventPipeline callback (no direct DOM access, no network calls)
 
 **Sampling Behavior:**
 - `samplingRate: 1.0` → All users send events to `/ingest` (100% sampling)
@@ -124,6 +138,12 @@ During initialization, the SDK fetches configuration from the backend `/config` 
   "decision": {
     "endpoint": "/decide",
     "timeoutMs": 400
+  },
+  "progress_timeout_rules": {
+    "enabled": true,
+    "timeout_seconds": 60,
+    "hard_timeout_seconds": 180,
+    "progress_event_names": ["card_created", "card_updated"]
   },
   "templates": [],
   "ttlSeconds": 300

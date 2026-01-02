@@ -121,19 +121,25 @@ Sent when developers call `Reveal.track(eventKind, eventType, payload)`.
 Automatically detected friction patterns:
 
 - **Stall events** - No user interaction for X seconds (default: 20 seconds)
-- **Rage clicks** - Multiple rapid clicks on the same element (planned)
-- **Backtracking** - Returning to previous step or view (planned)
+- **Rage clicks** - Multiple rapid clicks on the same element
+- **Backtracking** - Returning to previous step or view
+- **No progress** - No progress events detected within configured timeout (requires `progress_timeout_rules.enabled=true`)
 
 **Contains:**
 - `timestamp` - When the friction was detected
 - `pageUrl` - Current page URL
 - `selector` - CSS selector of the element (if applicable)
-- `type` - Friction type: `"stall" | "rageclick" | "backtrack"`
+- `type` - Friction type: `"stall" | "rageclick" | "backtrack" | "no_progress"`
 - `extra` - Additional metadata (optional), may include:
   - `target_id` (string) - Stable target identifier for rageclick events
   - `from_view` (string) - View identifier before navigation (for backtrack events)
   - `to_view` (string) - View identifier after navigation (for backtrack events)
   - `stall_ms` (number) - Stall duration in milliseconds (for stall events)
+  - `trigger_kind` (string) - "progress_timeout" for no_progress events
+  - `timeout_seconds` (number) - Configured timeout in seconds for no_progress events
+  - `hard_timeout_seconds` (number, optional) - Hard timeout threshold for higher confidence no_progress events
+  - `last_progress_at_ms` (number) - Timestamp of last progress event for no_progress events
+  - `time_since_progress_ms` (number) - Milliseconds since last progress event for no_progress events
 
 **Does NOT contain:**
 - User text input
@@ -286,7 +292,7 @@ The Overlay receives a strict JSON object:
   body?: string,
   ctaText?: string,
   quadrant?: "topLeft" | "topCenter" | "topRight" | "bottomLeft" | "bottomCenter" | "bottomRight",
-  frictionType?: "stall" | "rageclick" | "backtrack",
+  frictionType?: "stall" | "rageclick" | "backtrack" | "no_progress",
   expiresAt?: string,
   extra?: Record<string, string | number | boolean | null>
 }

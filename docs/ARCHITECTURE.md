@@ -23,6 +23,7 @@ The Reveal SDK is a lightweight, framework-agnostic library that detects user fr
 - **StallDetector**: Detects user hesitation/idle behavior
 - **RageClickDetector**: Detects rapid repeated clicks
 - **BacktrackDetector**: Detects backward navigation
+- **ProgressTimeoutDetector**: Detects lack of progress by monitoring product events (optional, requires `progress_timeout_rules.enabled=true` in config)
 
 ### Security
 - Input validation and sanitization
@@ -50,6 +51,7 @@ Here's how the SDK works at runtime:
        ├─> Initialize Transport (HTTP client)
        ├─> Initialize EventPipeline (event buffering)
        ├─> Initialize DecisionClient (decision requests, uses resolved endpoint)
+       ├─> Initialize ProgressTimeoutDetector (if enabled in config, before EventPipeline to wire callback)
        └─> Initialize DetectorManager (friction detection)
            └─> Start detectors (StallDetector, RageClickDetector, BacktrackDetector)
 

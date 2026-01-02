@@ -127,13 +127,14 @@ Reveal.track('product', 'event', {
 ### 2. Friction Events (`"friction"`)
 
 Friction events track user hesitation, confusion, or difficulty. These can be:
-- **Auto-generated** by the SDK's friction detectors (stall, rage click, backtrack)
+- **Auto-generated** by the SDK's friction detectors (stall, rage click, backtrack, no progress)
 - **Manually tracked** by developers when they detect friction patterns
 
 **Auto-Generated Event Types:**
 - `friction_stall` - User inactive for threshold duration (default: 20 seconds)
 - `friction_rageclick` - Multiple rapid clicks on same element
 - `friction_backtrack` - User navigated backward to recently visited routes
+- `friction_no_progress` - No progress events detected within configured timeout (requires `progress_timeout_rules.enabled=true`)
 
 **Manual Friction Events:**
 You can manually track friction when you detect patterns in your application:
@@ -213,6 +214,53 @@ The SDK automatically detects when users navigate backward to recently visited r
 - User navigates `/dashboard` → `/settings` → `/dashboard` (confusion, couldn't find setting)
 - User goes back after failed form submission (lost state)
 - User returns to previous page after encountering error
+
+#### No Progress Friction Details
+
+The SDK automatically detects when users have not made progress within a configured timeout period. Progress is measured by tracking product events that match a configured list of progress event names.
+
+**Detection Logic:**
+- Monitors product events captured by the EventPipeline
+- Only considers events where `event.kind === "product"` and `event.name` matches an entry in `progress_timeout_rules.progress_event_names`
+- When a matching progress event is detected, the detector resets its timer
+- If no progress events occur within `timeout_seconds`, emits `friction_no_progress` signal
+- Supports optional `hard_timeout_seconds` for higher confidence detection
+- Feature is disabled by default and must be explicitly enabled via `progress_timeout_rules.enabled=true` in client config
+
+**Configuration Requirements:**
+- `progress_timeout_rules.enabled` must be `true` (default: `false`)
+- `progress_timeout_rules.timeout_seconds` - Timeout threshold in seconds (e.g., 60)
+- `progress_timeout_rules.progress_event_names` - Array of product event names that count as progress (e.g., `["card_created", "card_updated"]`)
+- `progress_timeout_rules.hard_timeout_seconds` (optional) - Hard timeout threshold for higher confidence (e.g., 180)
+
+**Evidence Fields:**
+- `trigger_kind` (string) - Always `"progress_timeout"` for no_progress events
+- `timeout_seconds` (number) - Configured timeout threshold in seconds
+- `hard_timeout_seconds` (number, optional) - Hard timeout threshold if configured
+- `last_progress_at_ms` (number) - Timestamp of last matching progress event (milliseconds since epoch)
+- `time_since_progress_ms` (number) - Milliseconds elapsed since last progress event
+
+**Example:**
+```typescript
+// Automatically sent by SDK when no progress detected
+// Event type: "friction_no_progress"
+// Payload includes:
+{
+  page_url: '/dashboard',
+  selector: null,
+  type: 'no_progress',
+  trigger_kind: 'progress_timeout',
+  timeout_seconds: 60,
+  hard_timeout_seconds: 180,
+  last_progress_at_ms: 1703001234567,
+  time_since_progress_ms: 65000,
+}
+```
+
+**Use Cases:**
+- User hasn't created a card in 60 seconds during onboarding flow
+- User hasn't completed a step in a multi-step form within timeout period
+- User is idle on a page where progress events are expected
 
 ---
 

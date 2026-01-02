@@ -44,7 +44,7 @@ export interface BackendEventFormat {
   referrer: string | null;
   selector: string | null;
   element_text: string | null;
-  friction_type: "stall" | "rageclick" | "backtrack" | null;
+  friction_type: "stall" | "rageclick" | "backtrack" | "no_progress" | null;
   user_key: string | null;
   environment: string | null;
   batch_id: string | null;
@@ -88,12 +88,12 @@ function extractElementTextFromPayload(payload: Record<string, any> | undefined 
 /**
  * Extract friction type from payload
  */
-function extractFrictionType(payload: Record<string, any> | undefined | null): "stall" | "rageclick" | "backtrack" | null {
+function extractFrictionType(payload: Record<string, any> | undefined | null): "stall" | "rageclick" | "backtrack" | "no_progress" | null {
   if (!payload || typeof payload !== "object") {
     return null;
   }
   const type = payload.type || payload.friction_type || payload.frictionType;
-  if (type === "stall" || type === "rageclick" || type === "backtrack") {
+  if (type === "stall" || type === "rageclick" || type === "backtrack" || type === "no_progress") {
     return type;
   }
   return null;
@@ -219,7 +219,7 @@ export function transformBaseEventToBackendFormat(
   // Handle friction events specially - they require selector, page_url, and friction_type
   let selector: string | null = null;
   let pageUrl: string | null = null;
-  let frictionType: "stall" | "rageclick" | "backtrack" | null = null;
+  let frictionType: "stall" | "rageclick" | "backtrack" | "no_progress" | null = null;
 
   // Extract path, referrerPath, and activationContext from payload or page context
   let path: string | null = null;
@@ -246,8 +246,8 @@ export function transformBaseEventToBackendFormat(
     
     // FALLBACK: If frictionType is null, try to extract from event name (e.g., "friction_stall" -> "stall")
     if (!frictionType && baseEvent.name && baseEvent.name.startsWith("friction_")) {
-      const extractedType = baseEvent.name.replace("friction_", "") as "stall" | "rageclick" | "backtrack";
-      if (extractedType === "stall" || extractedType === "rageclick" || extractedType === "backtrack") {
+      const extractedType = baseEvent.name.replace("friction_", "") as "stall" | "rageclick" | "backtrack" | "no_progress";
+      if (extractedType === "stall" || extractedType === "rageclick" || extractedType === "backtrack" || extractedType === "no_progress") {
         frictionType = extractedType;
       }
     }

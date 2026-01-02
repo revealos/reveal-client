@@ -170,6 +170,7 @@ export function createConfigClient(
       "decision",
       "features",
       "treatment_rules", // ADD: Allow treatment_rules through validation
+      "progress_timeout_rules", // ADD: Allow progress_timeout_rules through validation
       "templates",
       "ttlSeconds",
     ]);

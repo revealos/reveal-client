@@ -17,6 +17,7 @@
 import { createLogger, type Logger } from "../utils/logger";
 import { safeTry, safeTryAsync } from "../utils/safe";
 import { createDetectorManager, type DetectorManager } from "../modules/detectorManager";
+import { createProgressTimeoutDetector, type ProgressTimeoutDetector } from "../detectors/progressTimeoutDetector";
 import { createSessionManager, type SessionManager } from "../modules/sessionManager";
 import { createDecisionClient, type DecisionClient } from "../modules/decisionClient";
 import { createTransport, type Transport } from "../modules/transport";
@@ -133,6 +134,7 @@ let eventPipeline: EventPipeline | null = null;
 let transport: Transport | null = null;
 let detectorManager: DetectorManager | null = null;
 let decisionClient: DecisionClient | null = null;
+let progressTimeoutDetector: ProgressTimeoutDetector | null = null;
 let logger: Logger | null = null;
 
 // Merged final config (includes init options.features merged with backend config)
@@ -728,6 +730,24 @@ export async function init(
       loggerRef.logDebug("Transport initialized", { endpointUrl: ingestEndpoint });
     }, loggerRef, "Transport creation");
 
+    // STEP: Initialize ProgressTimeoutDetector (before EventPipeline, so we can pass callback)
+    safeTry(() => {
+      if (finalConfig.progress_timeout_rules?.enabled === true) {
+        progressTimeoutDetector = createProgressTimeoutDetector({
+          config: finalConfig.progress_timeout_rules,
+          onFrictionSignal,
+          logger: loggerRef,
+        });
+        loggerRef.logDebug("ProgressTimeoutDetector initialized", {
+          enabled: true,
+          timeout_seconds: finalConfig.progress_timeout_rules.timeout_seconds,
+          progress_event_names: finalConfig.progress_timeout_rules.progress_event_names,
+        });
+      } else {
+        loggerRef.logDebug("ProgressTimeoutDetector disabled (not enabled in config)");
+      }
+    }, loggerRef, "ProgressTimeoutDetector creation");
+
     // STEP: Initialize EventPipeline (event buffering and enrichment)
     safeTry(() => {
       if (!transport) {
@@ -747,6 +767,7 @@ export async function init(
         hasTransport: !!transport,
         configMaxFlushIntervalMs: 5000,
         configMaxBufferSize: 1000,
+        hasProgressTimeoutDetector: !!progressTimeoutDetector,
       });
 
       eventPipeline = createEventPipeline({
@@ -775,6 +796,13 @@ export async function init(
             screen: null,
           };
         },
+        onEventCaptured: progressTimeoutDetector
+          ? (event) => {
+              safeTry(() => {
+                progressTimeoutDetector?.onEvent(event);
+              }, loggerRef, "ProgressTimeoutDetector.onEvent");
+            }
+          : undefined,
       });
 
       // Set EventPipeline reference for internal trace notification system
@@ -1057,6 +1085,11 @@ function cleanup() {
   // Tear down any partially initialized modules
   // Order matters: stop detectors first, then pipeline (which may flush), then others
   
+  if (progressTimeoutDetector) {
+    const ptd = progressTimeoutDetector; // Capture for TypeScript narrowing
+    safeTry(() => ptd.destroy(), logger || undefined, "cleanup:progressTimeoutDetector");
+  }
+
   if (detectorManager) {
     const dm = detectorManager; // Capture for TypeScript narrowing
     safeTry(() => dm.destroy(), logger || undefined, "cleanup:detectors");
@@ -1078,6 +1111,7 @@ function cleanup() {
   eventPipeline = null;
   transport = null;
   detectorManager = null;
+  progressTimeoutDetector = null;
   decisionClient = null;
 
   // Clear subscribers

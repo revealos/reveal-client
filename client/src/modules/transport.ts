@@ -50,7 +50,7 @@ export interface DecideRequestPayload {
   sessionId: string;
   anonymousId?: string; // Persistent user identifier for treatment assignment
   friction: {
-    type: "stall" | "rageclick" | "backtrack";
+    type: "stall" | "rageclick" | "backtrack" | "no_progress";
     pageUrl: string;
     selector: string | null;
     timestamp: number;

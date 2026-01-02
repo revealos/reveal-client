@@ -46,6 +46,7 @@ export interface EventPipelineOptions {
   config?: Partial<EventPipelineConfig>;
   getCurrentLocation?: () => { path: string | null; route: string | null; screen: string | null };
   sampledIn?: boolean; // Default: true (no sampling)
+  onEventCaptured?: (event: BaseEvent) => void; // Optional callback invoked after enrichment, before buffer push
 }
 
 /**
@@ -91,6 +92,7 @@ export function createEventPipeline(
     },
     config = {},
     sampledIn = true, // Default: true (no sampling)
+    onEventCaptured,
   } = options;
 
   // ──────────────────────────────────────────────────────────────────────
@@ -468,6 +470,11 @@ export function createEventPipeline(
 
         // Enrich event with metadata
         const enrichedEvent = enrichEvent(kind, name, payload);
+
+        // Invoke onEventCaptured callback (if provided) - wrapped in safeTry to prevent crashes
+        safeTry(() => {
+          onEventCaptured?.(enrichedEvent);
+        }, logger, "onEventCaptured");
 
         // DEBUG PROBE 2: Log event enqueued
         if (typeof window !== "undefined" && (window as any).__REVEAL_DEBUG__) {
