@@ -188,8 +188,14 @@ For complete event type documentation, see [docs/EVENTS.md](./docs/EVENTS.md).
 
 - **Structured payloads only**: Only explicitly defined event payloads are sent. No automatic data collection.
 - **No DOM scraping**: The SDK does not read or transmit DOM content, form values, or page HTML.
-- **No storage access**: The SDK does not access cookies, localStorage, sessionStorage, or any browser storage APIs.
-- **Single transport module**: All network calls flow through a single, auditable transport module (`packages/client/src/modules/transport.ts`).
+- **Minimal storage usage**: The SDK uses `localStorage` and `sessionStorage` only for SDK-internal state:
+  - `localStorage`: Anonymous ID persistence, treatment assignment, sampling decisions (all scoped per project + user)
+  - `sessionStorage`: Tab-level sequence counter for event ordering
+  - All storage is SDK-internal state only (no user data stored)
+  - Storage failures are handled gracefully (fail-open behavior)
+- **Two documented transport modules**: All network calls flow through two auditable modules:
+  - `packages/client/src/modules/transport.ts` - JSON API calls (`/ingest`, `/decide`)
+  - `packages/client/src/modules/recordingUpload.ts` - Recording upload flow (3-step direct-to-storage)
 - **Text-only rendering**: The overlay renders text content only. No HTML injection, no JavaScript execution, no dynamic code evaluation.
 - **No automatic PII capture**: PII cannot be captured automatically. Only data explicitly passed to `Reveal.track()` is sent.
 

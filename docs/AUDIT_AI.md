@@ -109,15 +109,28 @@ Output Format:
 
 ### HTTP/HTTPS Request Boundaries
 
-**The only file that sends HTTP/HTTPS requests is:**
+**There are TWO files that send HTTP/HTTPS requests:**
 
-1. `packages/client/src/modules/transport.ts`
+1. `packages/client/src/modules/transport.ts` (Primary API Transport)
    - Function: `sendBatch()` - Sends event batches to `/ingest` endpoint
    - Function: `sendDecisionRequest()` - Sends decision requests to `/decide` endpoint
    - Also uses: `sendWithBeacon()` for page unload scenarios
-   - This is the single auditable file for all network requests
+   - This is the primary auditable file for all JSON API network requests
 
-**Verification**: Search the codebase for `fetch(`, `XMLHttpRequest`, `axios`, `http.`, `https.` - only `transport.ts` should contain network calls. DecisionClient delegates HTTP requests to Transport.
+2. `packages/client/src/modules/recordingUpload.ts` (Recording Upload Exception)
+   - Function: `uploadRecording()` - Handles 3-step recording upload flow
+   - **Step 1**: POST `/recordings/init` → JSON to Reveal API (gets signed URL)
+   - **Step 2**: PUT binary blob to Supabase Storage signed URL (external domain, direct-to-storage)
+   - **Step 3**: POST `/recordings/complete` → JSON to Reveal API (marks upload ready)
+   - **Justification**: Step 2 uploads directly to Supabase Storage (external domain), not the API. This is architecturally different from JSON API calls. Steps 1 & 3 could theoretically use `transport.ts`, but keeping them together maintains the 3-step flow's cohesion and state management.
+   - **Security Guarantees**:
+     - API base URL validation (HTTPS required, or HTTP for localhost in development)
+     - Supabase Storage URL validation (must match `/storage/v1/object/` pattern)
+     - HTTP method validation (POST for init/complete, PUT for upload)
+     - All steps are audit logged for compliance
+     - Input sanitization via `sanitizeReason()` and `sanitizeMeta()`
+
+**Verification**: Search the codebase for `fetch(`, `XMLHttpRequest`, `axios`, `http.`, `https.` - only `transport.ts` and `recordingUpload.ts` should contain network calls. All other modules delegate HTTP requests to these two files.
 
 ### PII Scrubbing Boundaries
 
@@ -170,24 +183,38 @@ Output Format:
    - `quadrant?: "topLeft" | "topCenter" | "topRight" | "bottomLeft" | "bottomCenter" | "bottomRight"`
    - No HTML fields, no executable code fields
 
-2. **React Rendering**: All content rendered as React text nodes:
+2. **React Rendering** (`packages/overlay-react`): All content rendered as React text nodes:
    - `decision.title` → `<h3>{decision.title}</h3>` (React escapes automatically)
    - `decision.body` → `<p>{decision.body}</p>` (React escapes automatically)
    - `decision.ctaText` → `<button>{decision.ctaText}</button>` (React escapes automatically)
+   - No `dangerouslySetInnerHTML` used anywhere in React overlay package
 
-3. **No HTML Injection**: 
-   - No `dangerouslySetInnerHTML` used anywhere in overlay package
-   - No `innerHTML` manipulation
+3. **Web Component Rendering** (`packages/overlay-wc`): Uses `innerHTML` for Shadow DOM, but all user content is escaped:
+   - Components: `reveal-tooltip-nudge`, `reveal-spotlight`, `reveal-inline-hint-nudge`
+   - All user content (title, body, ctaText) is escaped via `_escape()` method before insertion
+   - `_escape()` implementation: `div.textContent = text; return div.innerHTML;`
+   - **Safety**: `textContent` automatically escapes HTML entities, so `innerHTML` receives already-escaped content
+   - This pattern neutralizes XSS: `<script>alert('XSS')</script>` becomes `&lt;script&gt;alert('XSS')&lt;/script&gt;`
+   - No `eval()`, `Function()`, or dynamic code execution
+
+4. **No HTML Injection**: 
+   - No `dangerouslySetInnerHTML` used in React overlay package
+   - `innerHTML` in Web Components is safe due to `_escape()` preprocessing
    - No `eval()` or `Function()` calls
    - No dynamic code execution
 
-4. **Verification**: Search overlay package for:
-   - `dangerouslySetInnerHTML` → should return 0 results
-   - `innerHTML` → should return 0 results
+5. **Verification**: Search overlay packages for:
+   - `dangerouslySetInnerHTML` → should return 0 results (React package)
+   - `innerHTML` → expected in `overlay-wc` components (safe due to `_escape()`)
+   - `_escape(` → should be present in all `overlay-wc` components that use `innerHTML`
    - `eval(` → should return 0 results
    - `Function(` → should return 0 results
 
-**Location**: `packages/overlay-react/src/components/OverlayManager.tsx` (see security comment block at top of file)
+**Locations**: 
+- `packages/overlay-react/src/components/OverlayManager.tsx` (React text node rendering)
+- `packages/overlay-wc/src/components/reveal-tooltip-nudge.ts` (Shadow DOM with `_escape()`)
+- `packages/overlay-wc/src/components/reveal-spotlight.ts` (Shadow DOM with `_escape()`)
+- `packages/overlay-wc/src/components/reveal-inline-hint-nudge.ts` (Shadow DOM with `_escape()`)
 
 ---
 
@@ -279,7 +306,8 @@ OverlayManager renders via React (text nodes, no HTML injection)
 
 3. **XSS Prevention**
    - Overlay renders plain text only (no HTML injection)
-   - React's automatic escaping
+   - React's automatic escaping (React overlay)
+   - Web Components use `_escape()` method to neutralize XSS before `innerHTML` insertion
    - No executable code from backend decisions
    - Worst-case scenario: incorrect text display (cannot execute code)
 
@@ -290,9 +318,9 @@ OverlayManager renders via React (text nodes, no HTML injection)
 
 ### Auditability
 
-- **Single Transport Boundary**: Only 2 files make HTTP requests
-- **Single PII Scrubbing Point**: All payloads scrubbed in `eventPipeline.enrichEvent()`
-- **Single Audit Logging Point**: All requests logged before network calls
+- **Two Transport Boundaries**: `transport.ts` (API calls) and `recordingUpload.ts` (recording uploads) - both documented and hardened
+- **Single PII Scrubbing Point**: All payloads scrubbed in `eventPipeline.enrichEvent()` and `decisionClient.buildRequestPayload()`
+- **Audit Logging Points**: All requests logged before network calls in both `transport.ts` and `recordingUpload.ts`
 - **Clear Code Comments**: Security boundaries marked with `SECURITY:` comments
 
 ### Running the Audit AI Prompt
@@ -316,7 +344,7 @@ OverlayManager renders via React (text nodes, no HTML injection)
 
 The Reveal SDK is designed with security and auditability as first-class concerns:
 
-- ✅ **Single transport boundary** - Only 2 files make HTTP requests
+- ✅ **Two documented transport boundaries** - `transport.ts` (API calls) and `recordingUpload.ts` (recording uploads) - both hardened with allowlist validation
 - ✅ **PII scrubbing implemented** - All payloads scrubbed before transmission
 - ✅ **Audit logging implemented** - All requests logged with structured events (low-severity in debug mode only)
 - ✅ **XSS prevention** - Overlay renders plain text only, no HTML injection possible
