@@ -28,6 +28,7 @@ export interface ClientConfig {
       stall?: boolean; // Default: true
       rageclick?: boolean; // Default: true
       backtrack?: boolean; // Default: true
+      no_progress?: boolean; // Default: true (also requires progress_timeout_rules.enabled)
     };
     nudges?: {
       tooltip?: boolean; // Default: true
@@ -70,7 +71,7 @@ export const CURRENT_CONFIG_VERSION = 1;
  */
 export const DEFAULT_FEATURES = {
   enabled: true,
-  detectors: { stall: true, rageclick: true, backtrack: true },
+  detectors: { stall: true, rageclick: true, backtrack: true, no_progress: true },
   nudges: { tooltip: true, inline_hint: true, spotlight: true, modal: true, banner: true },
   recording: { enabled: false, uploadEnabled: false },
 };

@@ -82,8 +82,9 @@ Request a trace for the current session. Generates a UUID, notifies subscribers,
 - `options.meta` (object, optional): Metadata with **primitives only** (max 2KB)
 
 **Returns:** `string | null`
-- UUID trace_id if recording feature enabled
-- `null` if disabled or SDK not initialized
+- UUID trace_id if SDK is initialized
+- `null` if SDK not initialized
+- **NOTE:** Works independently of Reveal's recording feature (BYOR pattern)
 
 **Example:**
 ```typescript
@@ -417,14 +418,15 @@ rrweb.record({
 **Symptoms:** `/decide` payload missing `trace_id` field
 
 **Possible causes:**
-1. Recording feature not enabled
+1. SDK not initialized
 2. Trace consumed by previous /decide call
 3. TTL expired (>60s between requestTrace and friction)
 
 **Debug steps:**
 ```typescript
-// 1. Check if recording feature enabled
-console.log('Recording enabled:', Reveal.requestTrace({ reason: 'test' }) !== null);
+// 1. Check if trace was requested (always works if SDK initialized)
+const traceId = Reveal.requestTrace({ reason: 'test' });
+console.log('Trace requested:', traceId !== null);
 
 // 2. Enable debug logging
 // Set debug: true in Reveal.init()

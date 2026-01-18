@@ -732,7 +732,14 @@ export async function init(
 
     // STEP: Initialize ProgressTimeoutDetector (before EventPipeline, so we can pass callback)
     safeTry(() => {
-      if (finalConfig.progress_timeout_rules?.enabled === true) {
+      // Check both features.detectors.no_progress AND progress_timeout_rules.enabled
+      // Both must be true for the detector to be enabled
+      const features = finalConfig.features || DEFAULT_FEATURES;
+      const detectorFlags = features.detectors || DEFAULT_FEATURES.detectors;
+      const noProgressDetectorEnabled = detectorFlags.no_progress ?? true; // Default: true
+      const progressTimeoutEnabled = finalConfig.progress_timeout_rules?.enabled === true;
+
+      if (noProgressDetectorEnabled && progressTimeoutEnabled && finalConfig.progress_timeout_rules) {
         progressTimeoutDetector = createProgressTimeoutDetector({
           config: finalConfig.progress_timeout_rules,
           onFrictionSignal,
@@ -740,12 +747,93 @@ export async function init(
         });
         loggerRef.logDebug("ProgressTimeoutDetector initialized", {
           enabled: true,
+          detectorFlag: noProgressDetectorEnabled,
+          timeoutRulesEnabled: progressTimeoutEnabled,
           timeout_seconds: finalConfig.progress_timeout_rules.timeout_seconds,
           progress_event_names: finalConfig.progress_timeout_rules.progress_event_names,
         });
+
+        // Set up route change detection for no_progress detector
+        if (typeof window !== "undefined" && progressTimeoutDetector?.handleRouteChange) {
+          let previousPathname: string | null = null;
+          let routeChangeIntervalId: ReturnType<typeof setInterval> | null = null;
+
+          // Helper to get current pathname
+          const getCurrentPathname = (): string | null => {
+            try {
+              return window.location.pathname;
+            } catch {
+              return null;
+            }
+          };
+
+          // Helper to check and handle route change
+          const checkRouteChange = (): void => {
+            const currentPathname = getCurrentPathname();
+            if (currentPathname !== null && currentPathname !== previousPathname) {
+              if (previousPathname !== null) {
+                // Route changed - notify detector
+                loggerRef.logDebug("ProgressTimeoutDetector: route change detected", {
+                  from: previousPathname,
+                  to: currentPathname,
+                });
+                progressTimeoutDetector?.handleRouteChange?.(currentPathname);
+              }
+              previousPathname = currentPathname;
+            } else if (currentPathname !== null) {
+              previousPathname = currentPathname;
+            }
+          };
+
+          // Initialize pathname
+          previousPathname = getCurrentPathname();
+
+          // Next.js router integration (if available)
+          if ((window as any).next?.router?.events) {
+            try {
+              const router = (window as any).next.router;
+              const handleRouteChange = () => {
+                // Small delay to ensure pathname has updated
+                setTimeout(() => {
+                  checkRouteChange();
+                }, 0);
+              };
+
+              router.events.on("routeChangeStart", handleRouteChange);
+              router.events.on("routeChangeComplete", handleRouteChange);
+
+              loggerRef.logDebug("ProgressTimeoutDetector: Next.js router events attached");
+            } catch (error: any) {
+              loggerRef.logWarn("ProgressTimeoutDetector: failed to attach Next.js router events", {
+                error: error?.message || String(error),
+              });
+            }
+          }
+
+          // Polling fallback (catches Next.js App Router and other SPA frameworks)
+          // Next.js App Router doesn't always fire router events, so we poll
+          // Use 500ms interval to balance responsiveness with performance
+          routeChangeIntervalId = setInterval(() => {
+            checkRouteChange();
+          }, 500);
+
+          // Store cleanup function for destroy
+          (progressTimeoutDetector as any).__routeChangeCleanup = () => {
+            if (routeChangeIntervalId !== null) {
+              clearInterval(routeChangeIntervalId);
+              routeChangeIntervalId = null;
+            }
+            // Note: Next.js router events cleanup would need router reference, but we don't store it
+            // This is acceptable as entryPoint.destroy() will handle cleanup
+          };
+        } // End of if (typeof window !== "undefined" && progressTimeoutDetector?.handleRouteChange)
       } else {
-        loggerRef.logDebug("ProgressTimeoutDetector disabled (not enabled in config)");
-      }
+          loggerRef.logDebug("ProgressTimeoutDetector disabled", {
+            detectorFlag: noProgressDetectorEnabled,
+            timeoutRulesEnabled: progressTimeoutEnabled,
+            reason: !noProgressDetectorEnabled ? "features.detectors.no_progress is false" : "progress_timeout_rules.enabled is false",
+          });
+        }
     }, loggerRef, "ProgressTimeoutDetector creation");
 
     // STEP: Initialize EventPipeline (event buffering and enrichment)
@@ -953,12 +1041,16 @@ export function onNudgeDecision(
  * notifies subscribers (so they can start their session recorder), and correlates
  * the trace_id with the next /decide request within 60s TTL.
  *
+ * NOTE: This works independently of Reveal's recording feature. It's designed for
+ * customers using their own recorders (rrweb, LogRocket, etc.) to correlate recordings
+ * with nudge decisions.
+ *
  * @param options - Optional reason and metadata (primitives only, max 2KB)
- * @returns trace_id (UUID) if recording enabled, null otherwise
+ * @returns trace_id (UUID) if SDK is initialized, null otherwise
  *
  * @example
  * ```typescript
- * // Manually request a trace
+ * // Manually request a trace (works even if Reveal's recording feature is disabled)
  * const traceId = Reveal.requestTrace({
  *   reason: 'user_reported_issue',
  *   meta: { page: 'checkout', step: 2, isHighValue: true }
@@ -974,20 +1066,8 @@ export function requestTrace(options?: {
     return null;
   }
 
-  // Check if recording feature is enabled (use mergedConfig which includes init options.features)
-  const features = mergedConfig?.features || DEFAULT_FEATURES;
-  const recordingEnabled = features.recording?.enabled ?? DEFAULT_FEATURES.recording.enabled;
-
-  if (!recordingEnabled) {
-    logger?.logDebug("requestTrace called but recording feature disabled", {
-      hasMergedConfig: mergedConfig !== null,
-      features,
-      recordingEnabled,
-    });
-    return null;
-  }
-
   // Generate trace_id (use crypto.randomUUID if available, fallback to timestamp-based UUID)
+  // NOTE: This works independently of Reveal's recording feature - it's for BYOR (Bring Your Own Recorder)
   const traceId = typeof crypto !== "undefined" && crypto.randomUUID
     ? crypto.randomUUID()
     : `trace-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
@@ -1087,6 +1167,10 @@ function cleanup() {
   
   if (progressTimeoutDetector) {
     const ptd = progressTimeoutDetector; // Capture for TypeScript narrowing
+    // Clean up route change detection if it exists
+    if ((ptd as any).__routeChangeCleanup) {
+      safeTry(() => (ptd as any).__routeChangeCleanup(), logger || undefined, "cleanup:progressTimeoutDetector:routeChange");
+    }
     safeTry(() => ptd.destroy(), logger || undefined, "cleanup:progressTimeoutDetector");
   }
 
