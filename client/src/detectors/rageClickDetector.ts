@@ -5,7 +5,7 @@
  *
  * Logic:
  * - Tracks click events on elements
- * - Counts clicks within time window (e.g., 4 clicks in 900ms)
+ * - Counts clicks within time window (e.g., 3 clicks in 900ms)
  * - Emits FrictionSignal with type "rageclick"
  * - Excludes clicks on Reveal overlay components
  *
@@ -19,7 +19,7 @@ import type { Logger } from "../utils/logger";
  * Default configuration for rage click detection
  */
 const DEFAULT_RAGE_CONFIG = {
-  minClicks: 4,              // Minimum clicks to trigger
+  minClicks: 3,              // Minimum clicks to trigger
   windowMs: 900,             // Time window (900ms)
   maxTargetDriftPx: 24,      // Max drift between clicks (same target)
   minInterClickMs: 30,       // Ignore ultra-fast duplicates

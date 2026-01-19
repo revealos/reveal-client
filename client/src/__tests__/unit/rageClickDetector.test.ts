@@ -49,7 +49,7 @@ describe("RageClickDetector", () => {
 
   // Trigger conditions
   describe("Trigger conditions", () => {
-    it("should emit friction signal after 4 clicks within 900ms on same target", () => {
+    it("should emit friction signal after 3 clicks within 900ms on same target", () => {
       detector.init();
 
       const mockTarget = {
@@ -62,7 +62,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200); // 200ms apart
         clickHandler?.({
           target: mockTarget,
@@ -80,9 +80,9 @@ describe("RageClickDetector", () => {
         extra: expect.objectContaining({
           targetKey: "id:submit-btn",
           target_id: "id:submit-btn",
-          clickCount: 4,
+          clickCount: 3,
           windowMs: 900,
-          debugCode: expect.stringMatching(/^RC_4C_900MS_/),
+          debugCode: expect.stringMatching(/^RC_3C_900MS_/),
         }),
       });
     });
@@ -171,8 +171,8 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      // 4 clicks but spread over 1100ms (exceeds 900ms window)
-      for (let i = 0; i < 4; i++) {
+      // 3 clicks but spread over 1100ms (exceeds 900ms window)
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 350);
         clickHandler?.({
           target: mockTarget,
@@ -734,10 +734,10 @@ describe("RageClickDetector", () => {
         } as any);
       }
 
-      // First emission happens on 4th click with 4 positions
+      // First emission happens on 3rd click with 3 positions
       // (We emit as soon as minClicks threshold is reached)
       const call = mockEmit.mock.calls[0][0];
-      expect(call.extra.positions_count).toBe(4);
+      expect(call.extra.positions_count).toBe(3);
 
       // The positions count reflects the number of clicks
       // (No longer emitting raw positions array)
