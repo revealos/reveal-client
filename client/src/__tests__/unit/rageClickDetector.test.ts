@@ -171,16 +171,32 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      // 3 clicks but spread over 1100ms (exceeds 900ms window)
-      for (let i = 0; i < 3; i++) {
-        vi.setSystemTime(baseTime + i * 350);
-        clickHandler?.({
-          target: mockTarget,
-          clientX: 100,
-          clientY: 200,
-          composedPath: () => [mockTarget],
-        } as any);
-      }
+      // 3 clicks but spread over 1000ms (exceeds 900ms window)
+      // First click at 0ms, second at 500ms, third at 1000ms
+      // Window from first to last = 1000ms > 900ms, so should reset before threshold
+      vi.setSystemTime(baseTime);
+      clickHandler?.({
+        target: mockTarget,
+        clientX: 100,
+        clientY: 200,
+        composedPath: () => [mockTarget],
+      } as any);
+
+      vi.setSystemTime(baseTime + 500);
+      clickHandler?.({
+        target: mockTarget,
+        clientX: 100,
+        clientY: 200,
+        composedPath: () => [mockTarget],
+      } as any);
+
+      vi.setSystemTime(baseTime + 1000);
+      clickHandler?.({
+        target: mockTarget,
+        clientX: 100,
+        clientY: 200,
+        composedPath: () => [mockTarget],
+      } as any);
 
       expect(mockEmit).not.toHaveBeenCalled();
     });
@@ -648,8 +664,8 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       let baseTime = Date.now();
 
-      // 3 clicks
-      for (let i = 0; i < 3; i++) {
+      // 2 clicks (below threshold, should not trigger)
+      for (let i = 0; i < 2; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -659,10 +675,13 @@ describe("RageClickDetector", () => {
         } as any);
       }
 
-      // Wait > 900ms (window expires)
+      // Verify no emission yet
+      expect(mockEmit).not.toHaveBeenCalled();
+
+      // Wait > 900ms (window expires, state should reset)
       baseTime = baseTime + 1000;
 
-      // New click (should reset)
+      // New click (should start fresh window)
       vi.setSystemTime(baseTime);
       clickHandler?.({
         target: mockTarget,
@@ -671,7 +690,7 @@ describe("RageClickDetector", () => {
         composedPath: () => [mockTarget],
       } as any);
 
-      // Should not emit (only 1 click in new window)
+      // Should still not emit (only 1 click in new window)
       expect(mockEmit).not.toHaveBeenCalled();
     });
 
