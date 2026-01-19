@@ -14,9 +14,9 @@ A lightweight SDK for understanding user behaviour and improving onboarding auto
 
 ### Lightweight & High-Performance
 
-- **Minimal footprint**: Zero runtime dependencies, ~25KB gzipped
+- **Minimal footprint**: Zero runtime dependencies, ~20KB gzipped (ESM)
 - **No heavy dependencies**: Framework-agnostic core, optional React overlay
-- **Fast initialization**: Initializes in under 50ms
+- **Fast initialization**: Synchronous setup completes in ~10-15ms (config fetch adds network latency)
 - **Efficient event batching**: Automatic batching and debouncing of events
 
 ### Security-First Architecture
