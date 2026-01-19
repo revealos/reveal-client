@@ -3,12 +3,14 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { emitTraceRequested, onTraceRequested, setTraceEventPipeline, __TEST_ONLY__resetTraceSubscribers } from '../../internal/traceRequested';
+import { emitTraceRequested, onTraceRequested, setTraceEventPipeline, setTraceRequestedLogger, __TEST_ONLY__resetTraceSubscribers } from '../../internal/traceRequested';
 import type { TraceRequestContext } from '../../types/recording';
+import type { Logger } from '../../utils/logger';
 
 describe('traceRequested', () => {
   beforeEach(() => {
     __TEST_ONLY__resetTraceSubscribers();
+    setTraceRequestedLogger(undefined); // Reset logger
   });
 
   describe('emitTraceRequested', () => {
@@ -91,24 +93,30 @@ describe('traceRequested', () => {
       const handler = vi.fn();
       onTraceRequested(handler);
 
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      // Mock logger
+      const mockLogError = vi.fn();
+      const mockLogger: Logger = {
+        logDebug: vi.fn(),
+        logInfo: vi.fn(),
+        logWarn: vi.fn(),
+        logError: mockLogError,
+      };
+      setTraceRequestedLogger(mockLogger);
 
       // Should not throw
       expect(() => {
         emitTraceRequested(mockContext);
       }).not.toThrow();
 
-      // Error should be logged
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Reveal] EventPipeline.captureEvent error:'),
-        expect.any(Error)
+      // Error should be logged via logger
+      expect(mockLogError).toHaveBeenCalledWith(
+        'EventPipeline.captureEvent error',
+        expect.objectContaining({ error: expect.any(Error) })
       );
 
       // Subscribers should still be notified despite error
       expect(handler).toHaveBeenCalledOnce();
       expect(handler).toHaveBeenCalledWith(mockContext);
-
-      consoleErrorSpy.mockRestore();
     });
 
     it('should handle EventPipeline without captureEvent method gracefully', () => {

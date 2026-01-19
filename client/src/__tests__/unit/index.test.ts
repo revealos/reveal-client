@@ -407,20 +407,25 @@ describe('Reveal SDK', () => {
             ttlSeconds: 60,
           };
 
-          global.fetch = vi.fn().mockResolvedValue({
+          const prodFetchMock = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => prodMockConfig,
           }) as any;
+          global.fetch = prodFetchMock;
 
           try {
             await Reveal.init('test-key', {
               environment: 'production',
             });
+            // Wait a bit for async operations
+            await new Promise(resolve => setTimeout(resolve, 100));
             // Verify fetch was called (SDK initialized successfully)
-            expect(global.fetch).toHaveBeenCalled();
+            expect(prodFetchMock).toHaveBeenCalled();
             // The timeout is set in minimalConfig fallback, which uses 1500ms for production
           } finally {
             global.fetch = originalFetch;
+            Reveal.destroy(); // Reset SDK state for next test
+            await new Promise(resolve => setTimeout(resolve, 10));
           }
 
           // Test staging timeout
@@ -433,20 +438,25 @@ describe('Reveal SDK', () => {
             ttlSeconds: 60,
           };
 
-          global.fetch = vi.fn().mockResolvedValue({
+          const stagingFetchMock = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => stagingMockConfig,
           }) as any;
+          global.fetch = stagingFetchMock;
 
           try {
             await Reveal.init('test-key', {
               environment: 'staging',
             });
+            // Wait a bit for async operations
+            await new Promise(resolve => setTimeout(resolve, 100));
             // Verify fetch was called (SDK initialized successfully)
-            expect(global.fetch).toHaveBeenCalled();
+            expect(stagingFetchMock).toHaveBeenCalled();
             // The timeout is set in minimalConfig fallback, which uses 1500ms for staging
           } finally {
             global.fetch = originalFetch;
+            Reveal.destroy(); // Reset SDK state for next test
+            await new Promise(resolve => setTimeout(resolve, 10));
           }
 
           // Test development timeout
@@ -459,20 +469,25 @@ describe('Reveal SDK', () => {
             ttlSeconds: 60,
           };
 
-          global.fetch = vi.fn().mockResolvedValue({
+          const devFetchMock = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => devMockConfig,
           }) as any;
+          global.fetch = devFetchMock;
 
           try {
             await Reveal.init('test-key', {
               environment: 'development',
             });
+            // Wait a bit for async operations
+            await new Promise(resolve => setTimeout(resolve, 100));
             // Verify fetch was called (SDK initialized successfully)
-            expect(global.fetch).toHaveBeenCalled();
+            expect(devFetchMock).toHaveBeenCalled();
             // The timeout is set in minimalConfig fallback, which uses 2000ms for development
           } finally {
             global.fetch = originalFetch;
+            Reveal.destroy(); // Reset SDK state
+            await new Promise(resolve => setTimeout(resolve, 10));
           }
         });
       });
@@ -522,6 +537,7 @@ describe('Reveal SDK', () => {
         await Reveal.init('test-key-https-validation-1', {
           ingestEndpoint: 'http://api.reveal.io/ingest', // Invalid: non-localhost HTTP
           decisionEndpoint: 'https://api.reveal.io/decide',
+          debug: true, // Enable debug mode so logger logs errors
         });
 
         // Wait for async validation to complete (config fetch + URL validation)
@@ -567,6 +583,7 @@ describe('Reveal SDK', () => {
         await Reveal.init('test-key-https-validation-2', {
           ingestEndpoint: 'https://api.reveal.io/ingest',
           decisionEndpoint: 'http://api.reveal.io/decide', // Invalid: non-localhost HTTP
+          debug: true, // Enable debug mode so logger logs errors
         });
 
         // Wait for async validation to complete (config fetch + URL validation)
@@ -609,6 +626,7 @@ describe('Reveal SDK', () => {
         
         await Reveal.init('test-key-https-validation-3', {
           apiBase: 'http://api.reveal.io', // Invalid: non-localhost HTTP
+          debug: true, // Enable debug mode so logger logs errors
         });
 
         // Wait for async validation to complete (apiBase is validated synchronously, but wait for config fetch)
@@ -653,6 +671,7 @@ describe('Reveal SDK', () => {
         await Reveal.init('test-key-https-validation-4', {
           ingestEndpoint: 'not-a-valid-url',
           decisionEndpoint: 'https://api.reveal.io/decide',
+          debug: true, // Enable debug mode so logger logs errors
         });
 
         // Wait for async validation to complete (config fetch + URL validation)
