@@ -100,7 +100,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -132,7 +132,7 @@ describe("RageClickDetector", () => {
 
   // Non-trigger conditions
   describe("Non-trigger conditions", () => {
-    it("should NOT emit with only 3 clicks", () => {
+    it("should NOT emit with only 2 clicks", () => {
       detector.init();
 
       const mockTarget = {
@@ -145,7 +145,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 2; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -199,11 +199,12 @@ describe("RageClickDetector", () => {
       const baseTime = Date.now();
 
       // Clicks with > 24px drift
+      // First 2 clicks are close, 3rd drifts > 24px (resets before threshold)
       const positions = [
         { x: 100, y: 100 },
         { x: 105, y: 105 },
-        { x: 110, y: 110 },
-        { x: 150, y: 150 }, // > 24px from first
+        { x: 150, y: 150 }, // > 24px from first (resets state)
+        { x: 155, y: 155 }, // Close to 3rd click
       ];
 
       for (let i = 0; i < 4; i++) {
@@ -233,7 +234,7 @@ describe("RageClickDetector", () => {
       let baseTime = Date.now();
 
       // First rage click
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -247,7 +248,7 @@ describe("RageClickDetector", () => {
 
       // Try again within cooldown (2000ms)
       baseTime = baseTime + 1500; // 1.5s later (within cooldown)
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -284,7 +285,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -317,7 +318,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -350,7 +351,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -379,7 +380,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -406,7 +407,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -436,7 +437,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -467,7 +468,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -499,7 +500,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -526,7 +527,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -557,7 +558,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -588,7 +589,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -630,7 +631,7 @@ describe("RageClickDetector", () => {
         } as any);
       }
 
-      // Should only count 4 (skipped the 20ms one)
+      // Should trigger on 3rd valid click (skipped the 20ms one, so 4 valid clicks total)
       expect(mockEmit).toHaveBeenCalledTimes(1);
     });
 
@@ -767,7 +768,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -800,7 +801,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
@@ -831,7 +832,7 @@ describe("RageClickDetector", () => {
       vi.useFakeTimers();
       const baseTime = Date.now();
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         vi.setSystemTime(baseTime + i * 200);
         clickHandler?.({
           target: mockTarget,
