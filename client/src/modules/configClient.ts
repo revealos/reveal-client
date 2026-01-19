@@ -238,9 +238,16 @@ export function createConfigClient(
 
           // Check HTTP status
           if (!response.ok) {
-            const errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            const status = response.status;
             try {
-              logger?.logError("ConfigClient: HTTP error", { status: response.status, statusText: response.statusText });
+              if (status >= 400 && status < 500) {
+                // 4xx = client errors (expected, handled gracefully)
+                // Examples: 403 (project inactive), 401 (invalid key)
+                logger?.logDebug("ConfigClient: request rejected", { status, statusText: response.statusText });
+              } else {
+                // 5xx = server errors (unexpected, need attention)
+                logger?.logError("ConfigClient: server error", { status, statusText: response.statusText });
+              }
             } catch {
               // Ignore logger errors
             }

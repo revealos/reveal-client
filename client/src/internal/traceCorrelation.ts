@@ -7,11 +7,22 @@
  * @internal
  */
 
+import type { Logger } from '../utils/logger';
+
 /**
  * Internal state for pending trace correlation
  */
 let pendingTraceId: string | null = null;
 let pendingTraceExpiry: number = 0;
+let logger: Logger | undefined = undefined;
+
+/**
+ * Set logger instance for trace correlation logging
+ * @internal
+ */
+export function setTraceLogger(loggerInstance: Logger | undefined): void {
+  logger = loggerInstance;
+}
 
 /**
  * Store a trace ID for correlation with the next /decide request
@@ -26,10 +37,7 @@ export function storePendingTraceId(traceId: string, ttlMs: number): void {
   pendingTraceId = traceId;
   pendingTraceExpiry = Date.now() + ttlMs;
 
-  // Debug logging (dev-only)
-  if (typeof window !== "undefined" && (window as any).__REVEAL_DEBUG__) {
-    console.log("[TraceCorrelation] Stored trace_id:", { traceId, ttlMs, expiresAt: new Date(pendingTraceExpiry).toISOString() });
-  }
+  logger?.logDebug("Stored trace_id", { traceId, ttlMs, expiresAt: new Date(pendingTraceExpiry).toISOString() });
 }
 
 /**
@@ -47,10 +55,7 @@ export function consumePendingTraceId(): string | null {
     // Expired or already consumed
     const reason = pendingTraceId === null ? "already_consumed" : "expired";
 
-    // Debug logging (dev-only)
-    if (typeof window !== "undefined" && (window as any).__REVEAL_DEBUG__) {
-      console.log("[TraceCorrelation] consumePendingTraceId() → null", { reason });
-    }
+    logger?.logDebug("consumePendingTraceId() → null", { reason });
 
     pendingTraceId = null;
     pendingTraceExpiry = 0;
@@ -62,10 +67,7 @@ export function consumePendingTraceId(): string | null {
   pendingTraceId = null;
   pendingTraceExpiry = 0;
 
-  // Debug logging (dev-only)
-  if (typeof window !== "undefined" && (window as any).__REVEAL_DEBUG__) {
-    console.log("[TraceCorrelation] Consumed trace_id:", { traceId });
-  }
+  logger?.logDebug("Consumed trace_id", { traceId });
 
   return traceId;
 }

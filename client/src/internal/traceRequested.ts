@@ -8,6 +8,7 @@
  */
 
 import type { TraceRequestContext, TraceRequestHandler } from '../types/recording';
+import type { Logger } from '../utils/logger';
 
 /**
  * Subscriber list (shared state)
@@ -18,6 +19,19 @@ let traceSubscribers: TraceRequestHandler[] = [];
  * EventPipeline reference (set once from entryPoint)
  */
 let eventPipeline: any | null = null;
+
+/**
+ * Logger reference (set once from entryPoint)
+ */
+let logger: Logger | undefined = undefined;
+
+/**
+ * Set logger instance for trace requested logging
+ * @internal
+ */
+export function setTraceRequestedLogger(loggerInstance: Logger | undefined): void {
+  logger = loggerInstance;
+}
 
 /**
  * Set EventPipeline reference (called once from entryPoint during init)
@@ -49,7 +63,7 @@ export function emitTraceRequested(context: TraceRequestContext): void {
       );
     } catch (error) {
       // EventPipeline errors shouldn't crash SDK
-      console.error('[Reveal] EventPipeline.captureEvent error:', error);
+      logger?.logError('EventPipeline.captureEvent error', { error });
     }
   }
 
@@ -59,7 +73,7 @@ export function emitTraceRequested(context: TraceRequestContext): void {
       handler(context);
     } catch (error) {
       // Subscriber errors shouldn't crash SDK
-      console.error('[Reveal] onTraceRequested handler error:', error);
+      logger?.logError('onTraceRequested handler error', { error });
     }
   }
 }

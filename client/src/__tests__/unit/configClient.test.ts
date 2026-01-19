@@ -251,7 +251,8 @@ describe("ConfigClient", () => {
 
       const result = await client.getConfig();
       expect(result).toBeNull();
-      expect(mockLogger.logError).toHaveBeenCalled();
+      // 4xx responses (like 401) are logged as debug, not error
+      expect(mockLogger.logDebug).toHaveBeenCalled();
     });
 
     it("should handle network errors (timeout)", async () => {

@@ -57,6 +57,11 @@ export interface ClientConfig {
     progress_event_names: string[];
   };
 
+  /**
+   * Templates array - always empty in client config.
+   * Templates are backend-only and decisioning happens server-side.
+   * The SDK validates this field exists but does not use it for filtering.
+   */
   templates: any[];
   ttlSeconds: number;
 }

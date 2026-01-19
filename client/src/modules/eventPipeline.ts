@@ -300,11 +300,11 @@ export function createEventPipeline(
 
     // Map camelCase to snake_case
     if ("nudgeId" in transformed) {
-      console.log("[EventPipeline] transformNudgePayload: nudgeId found, transforming to nudge_id", transformed.nudgeId);
+      logger?.logDebug("transformNudgePayload: nudgeId found, transforming to nudge_id", { nudgeId: transformed.nudgeId });
       transformed.nudge_id = transformed.nudgeId;
       delete transformed.nudgeId;
     } else {
-      console.log("[EventPipeline] transformNudgePayload: NO nudgeId in payload!", transformed);
+      logger?.logDebug("transformNudgePayload: NO nudgeId in payload!", transformed);
     }
 
     if ("slotId" in transformed) {
@@ -477,15 +477,13 @@ export function createEventPipeline(
         }, logger, "onEventCaptured");
 
         // DEBUG PROBE 2: Log event enqueued
-        if (typeof window !== "undefined" && (window as any).__REVEAL_DEBUG__) {
-          console.log("[REVEAL_DEBUG] Event enqueued:", {
-            kind: enrichedEvent.kind,
-            name: enrichedEvent.name,
-            event_id: enrichedEvent.event_id,
-            cohort: (enrichedEvent.payload as any)?.cohort || null,
-            flushImmediately,
-          });
-        }
+        logger?.logDebug("Event enqueued", {
+          kind: enrichedEvent.kind,
+          name: enrichedEvent.name,
+          event_id: enrichedEvent.event_id,
+          cohort: (enrichedEvent.payload as any)?.cohort || null,
+          flushImmediately,
+        });
 
         // Add to buffer
         eventBuffer.push(enrichedEvent);

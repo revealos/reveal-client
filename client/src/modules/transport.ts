@@ -249,21 +249,19 @@ export function createTransport(options: TransportOptions): Transport {
       };
 
       // DEBUG PROBE 3: Log batch summary before POST
-      if (typeof window !== "undefined" && (window as any).__REVEAL_DEBUG__) {
-        const frictionCounts: Record<string, number> = {};
-        eventsToSend.forEach((e: any) => {
-          if (e.event_kind === "friction" && e.friction_type) {
-            frictionCounts[e.friction_type] = (frictionCounts[e.friction_type] || 0) + 1;
-          }
-        });
-        console.log("[REVEAL_DEBUG] POST /ingest batch:", {
-          batchSize: eventsToSend.length,
-          frictionCountsByType: frictionCounts,
-          hasBacktrack: frictionCounts.backtrack > 0,
-          hasRageclick: frictionCounts.rageclick > 0,
-          endpoint: endpointUrl,
-        });
-      }
+      const frictionCounts: Record<string, number> = {};
+      eventsToSend.forEach((e: any) => {
+        if (e.event_kind === "friction" && e.friction_type) {
+          frictionCounts[e.friction_type] = (frictionCounts[e.friction_type] || 0) + 1;
+        }
+      });
+      logger?.logDebug("POST /ingest batch", {
+        batchSize: eventsToSend.length,
+        frictionCountsByType: frictionCounts,
+        hasBacktrack: frictionCounts.backtrack > 0,
+        hasRageclick: frictionCounts.rageclick > 0,
+        endpoint: endpointUrl,
+      });
 
       // SECURITY: Audit log before sending event batch
       // Metadata contains summary only (no raw PII, payloads already scrubbed)
@@ -284,7 +282,7 @@ export function createTransport(options: TransportOptions): Transport {
         headers: {
           "Content-Type": "application/json",
           "X-Reveal-Client-Key": clientKey,
-          "X-Reveal-SDK-Version": "1.0.0",
+          "X-Reveal-SDK-Version": "0.1.0",
         },
         body: JSON.stringify(payload),
         signal: abortController.signal as AbortSignal | undefined,
@@ -293,17 +291,16 @@ export function createTransport(options: TransportOptions): Transport {
       clearTimeout(timeoutId);
 
       // DEBUG PROBE 3b: Log response status
-      if (typeof window !== "undefined" && (window as any).__REVEAL_DEBUG__) {
-        console.log("[REVEAL_DEBUG] POST /ingest response:", {
-          status: response.status,
-          ok: response.ok,
-        });
-      }
+      logger?.logDebug("POST /ingest response", {
+        status: response.status,
+        ok: response.ok,
+      });
 
       // Check HTTP status
       if (!response.ok) {
+        const status = response.status;
         // Extract error details if available
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        let errorMessage = `HTTP ${status}: ${response.statusText}`;
         let errorBodySnippet = null;
 
         try {
@@ -316,27 +313,31 @@ export function createTransport(options: TransportOptions): Transport {
           // Ignore JSON parse errors
         }
 
-        // DEBUG PROBE 3c: Log error details
-        if (typeof window !== "undefined" && (window as any).__REVEAL_DEBUG__) {
-          console.error("[REVEAL_DEBUG] POST /ingest error:", {
-            status: response.status,
+        // Classify by status code
+        if (status >= 400 && status < 500) {
+          // 4xx = client errors (expected, handled gracefully)
+          // Examples: 403 (project inactive), 401 (invalid key), 400 (bad request)
+          logger?.logDebug("POST /ingest rejected", {
+            status,
+            errorMessage,
+            errorBodySnippet,
+          });
+        } else {
+          // 5xx = server errors (unexpected, need attention)
+          logger?.logError("POST /ingest server error", {
+            status,
             errorMessage,
             errorBodySnippet,
           });
         }
 
-        throw new HttpError(response.status, errorMessage);
+        throw new HttpError(status, errorMessage);
       }
 
       // Success - optionally parse response
       try {
         const result = await response.json();
-        logger?.logDebug("Transport: server response", result);
-
-        // DEBUG PROBE 3d: Log success response
-        if (typeof window !== "undefined" && (window as any).__REVEAL_DEBUG__) {
-          console.log("[REVEAL_DEBUG] POST /ingest success:", result);
-        }
+        logger?.logDebug("POST /ingest success", result);
       } catch (parseError) {
         // Non-JSON response is fine for 2xx
         logger?.logDebug("Transport: non-JSON success response");
@@ -591,10 +592,21 @@ export function createTransport(options: TransportOptions): Transport {
       // CHECK HTTP STATUS
       // ────────────────────────────────────────────────────────────────
       if (!response.ok) {
-        logger?.logError("Transport: decision request non-2xx response", {
-          status: response.status,
-          statusText: response.statusText,
-        });
+        const status = response.status;
+        if (status >= 400 && status < 500) {
+          // 4xx = client errors (expected, handled gracefully)
+          // Examples: 403 (project inactive), 401 (invalid key), 429 (rate limit)
+          logger?.logDebug("Transport: decision request rejected", {
+            status,
+            statusText: response.statusText,
+          });
+        } else {
+          // 5xx = server errors (unexpected, need attention)
+          logger?.logError("Transport: decision request server error", {
+            status,
+            statusText: response.statusText,
+          });
+        }
         return null;
       }
 

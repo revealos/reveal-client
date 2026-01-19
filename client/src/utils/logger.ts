@@ -42,17 +42,17 @@ export function createLogger(options: LoggerOptions = {}): Logger {
       }
     },
     logInfo: (message: string, meta?: any) => {
-      if (hasConsole) {
+      if (debug && hasConsole) {
         console.info(`${prefix} [INFO] ${message}`, meta || "");
       }
     },
     logWarn: (message: string, meta?: any) => {
-      if (hasConsole) {
+      if (debug && hasConsole) {
         console.warn(`${prefix} [WARN] ${message}`, meta || "");
       }
     },
     logError: (message: string, error?: any) => {
-      if (hasConsole) {
+      if (debug && hasConsole) {
         console.error(`${prefix} [ERROR] ${message}`, error || "");
       }
     },

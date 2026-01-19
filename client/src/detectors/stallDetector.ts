@@ -290,20 +290,13 @@ export function createStallDetector(
             },
           });
 
-          // Console log for debugging
-          console.log("[StallDetector] Friction signal emitted:", {
+          logger.logDebug("StallDetector: stall signal emitted", {
             type: "stall",
             context,
             selector: state.selector,
             pageUrl,
             idleMs,
             timestamp: new Date(now).toISOString(),
-          });
-
-          logger.logDebug("StallDetector: stall signal emitted", {
-            context,
-            selector: state.selector,
-            idleMs,
           });
         }
       });
@@ -402,14 +395,12 @@ export function createStallDetector(
       startPolling();
     }
 
-    console.log("[StallDetector] Started idle watch:", {
+    logger.logDebug("StallDetector: started idle watch", {
       context,
       selector,
       timeoutMs,
       timestamp: new Date().toISOString(),
     });
-
-    logger.logDebug("StallDetector: started idle watch", { context, selector, timeoutMs });
   }
 
   /**
@@ -418,11 +409,10 @@ export function createStallDetector(
   function stopIdleWatch(context: string): void {
     const removed = activeContexts.delete(context);
     if (removed) {
-      console.log("[StallDetector] Stopped idle watch:", {
+      logger.logDebug("StallDetector: stopped idle watch", {
         context,
         timestamp: new Date().toISOString(),
       });
-      logger.logDebug("StallDetector: stopped idle watch", { context });
     }
 
     // If no more contexts, we could stop polling, but keep it running

@@ -25,6 +25,8 @@ import { createEventPipeline, type EventPipeline } from "../modules/eventPipelin
 import { createConfigClient, type ConfigClient } from "../modules/configClient";
 import { setAuditLogger } from "../security/auditLogger";
 import { setErrorLogger } from "../errors/errorHandler";
+import { setTraceLogger } from "../internal/traceCorrelation";
+import { setTraceRequestedLogger } from "../internal/traceRequested";
 import { validateAllBackendUrls, validateHttpsUrl } from "../security/inputValidation";
 import { getOrCreateAnonymousId } from "../utils/anonymousId";
 import { getTabState, incrementSeq } from "../utils/tabState";
@@ -178,13 +180,6 @@ export async function init(
     return;
   }
 
-  // VALIDATION: clientKey is required
-  if (!clientKey || typeof clientKey !== "string") {
-    console.error("[Reveal SDK] clientKey is required and must be a string.");
-    isDisabled = true;
-    return;
-  }
-
   // SETUP: Extract options
   const debugMode = options.debug === true;
 
@@ -200,9 +195,20 @@ export async function init(
   // createLogger always returns a Logger, so this is safe
   const loggerRef: Logger = logger;
 
+  // VALIDATION: clientKey is required
+  if (!clientKey || typeof clientKey !== "string") {
+    loggerRef.logError("clientKey is required and must be a string.");
+    isDisabled = true;
+    return;
+  }
+
   // SECURITY: Wire logger into audit and error handling modules
   setAuditLogger(loggerRef);
   setErrorLogger(loggerRef);
+  
+  // Wire logger into internal trace modules
+  setTraceLogger(loggerRef);
+  setTraceRequestedLogger(loggerRef);
 
   // ──────────────────────────────────────────────────────────────────────
   // SECURITY: Validate apiBase first (if provided) before using it to construct URLs
@@ -210,14 +216,13 @@ export async function init(
   // ──────────────────────────────────────────────────────────────────────
   if (options.apiBase && typeof options.apiBase === "string") {
     const apiBaseValidation = validateHttpsUrl(options.apiBase);
-    if (!apiBaseValidation.valid) {
-      const errorMessage = `[Reveal SDK] SECURITY: Backend URLs must use HTTPS. API base URL ${apiBaseValidation.error}`;
-      loggerRef.logError(errorMessage);
-      console.error(errorMessage);
-      isDisabled = true;
-      isInitialized = false; // Allow retry if desired
-      return; // Exit early, no modules initialized
-    }
+      if (!apiBaseValidation.valid) {
+        const errorMessage = `SECURITY: Backend URLs must use HTTPS. API base URL ${apiBaseValidation.error}`;
+        loggerRef.logError(errorMessage);
+        isDisabled = true;
+        isInitialized = false; // Allow retry if desired
+        return; // Exit early, no modules initialized
+      }
   }
 
   // Mark as initialized after initial validation passes
@@ -233,6 +238,54 @@ export async function init(
     loggerRef.logDebug("Reveal SDK initializing.", { initTraceId });
 
     // ──────────────────────────────────────────────────────────────────────
+    // EXTRACT ENVIRONMENT (needed for apiBase resolution)
+    // ──────────────────────────────────────────────────────────────────────
+    const environment = (options.environment as "production" | "staging" | "development") || "development";
+
+    // ──────────────────────────────────────────────────────────────────────
+    // CENTRALIZED API BASE URL MAPPING
+    // ──────────────────────────────────────────────────────────────────────
+    /**
+     * Reveal-hosted API base URLs by environment.
+     * These are defaults used when apiBase is not explicitly provided.
+     * Environment parameter controls both:
+     * 1. Which engine host is called (via this mapping)
+     * 2. Which environment value is sent to backend (for data isolation)
+     */
+    const REVEAL_API_BASE_BY_ENVIRONMENT: Record<
+      "production" | "staging" | "development",
+      string
+    > = {
+      production: "https://api.revealos.com",
+      staging: "https://api-staging.revealos.com",
+      development: "http://localhost:3000",
+    } as const;
+
+    /**
+     * Resolve API base URL from environment parameter.
+     * Explicit apiBase always takes precedence (backward compatibility).
+     * 
+     * @param environment - Environment value ("production" | "staging" | "development")
+     * @param explicitApiBase - Optional explicit apiBase (takes precedence)
+     * @returns Resolved API base URL
+     */
+    function resolveApiBaseFromEnvironment(
+      environment: "production" | "staging" | "development",
+      explicitApiBase?: string
+    ): string {
+      // Explicit apiBase always takes precedence (backward compatibility)
+      if (explicitApiBase) {
+        return explicitApiBase;
+      }
+      
+      // Auto-resolve based on environment using centralized mapping
+      return REVEAL_API_BASE_BY_ENVIRONMENT[environment] || REVEAL_API_BASE_BY_ENVIRONMENT.production;
+    }
+
+    // Resolve apiBase using environment (if not explicitly provided)
+    const resolvedApiBase = resolveApiBaseFromEnvironment(environment, options.apiBase);
+
+    // ──────────────────────────────────────────────────────────────────────
     // RESOLVE INGEST ENDPOINT
     // ──────────────────────────────────────────────────────────────────────
     // Support both ingestEndpoint (explicit) and endpoint (backward compat)
@@ -246,10 +299,8 @@ export async function init(
       loggerRef.logWarn(
         "Using 'endpoint' option is deprecated, use 'ingestEndpoint' instead"
       );
-    } else if (options.apiBase && typeof options.apiBase === "string") {
-      ingestEndpoint = `${options.apiBase}/ingest`;
     } else {
-      ingestEndpoint = "https://api.revealos.com/ingest";
+      ingestEndpoint = `${resolvedApiBase}/ingest`;
     }
     loggerRef.logDebug("Resolved ingest endpoint", { ingestEndpoint });
 
@@ -259,22 +310,20 @@ export async function init(
     let configEndpoint: string;
     if (options.configEndpoint && typeof options.configEndpoint === "string") {
       configEndpoint = options.configEndpoint;
-    } else if (options.apiBase && typeof options.apiBase === "string") {
-      configEndpoint = `${options.apiBase}/config`;
     } else {
-      configEndpoint = "https://api.revealos.com/config";
+      configEndpoint = `${resolvedApiBase}/config`;
     }
     loggerRef.logDebug("Resolved config endpoint", { configEndpoint });
 
     // ──────────────────────────────────────────────────────────────────────
     // FETCH CONFIG FROM BACKEND (with fallback to minimalConfig)
     // ──────────────────────────────────────────────────────────────────────
-    const environment = (options.environment as "production" | "staging" | "development") || "development";
     
     // Environment-aware timeout defaults:
-    // - Production: 400ms (realistic for network + backend processing)
+    // - Production: 1500ms (realistic for network + backend processing, avoids false negatives)
+    // - Staging: 1500ms (production-like environment, avoids false negatives)
     // - Development: 2000ms (allows for CORS preflight + logging overhead)
-    const defaultDecisionTimeout = environment === "production" ? 400 : 2000;
+    const defaultDecisionTimeout = environment === "production" || environment === "staging" ? 1500 : 2000;
     
     // Fallback minimal config (used if backend fetch fails)
     const minimalConfig: ClientConfig = {
@@ -284,7 +333,7 @@ export async function init(
         samplingRate: 1.0,
       },
       decision: {
-        endpoint: options.decisionEndpoint || `${options.apiBase || "https://api.revealos.com"}/decide`,
+        endpoint: options.decisionEndpoint || `${resolvedApiBase}/decide`,
         timeoutMs: options.decisionTimeoutMs || defaultDecisionTimeout,
       },
       templates: [],
@@ -327,18 +376,14 @@ export async function init(
 
         if (clientConfig) {
           loggerRef.logDebug("Config fetched from backend", { initTraceId, projectId: clientConfig.projectId, environment: clientConfig.environment });
-          console.log("[Reveal SDK] ✓ Config fetched from backend:", clientConfig);
         } else {
           loggerRef.logWarn("Failed to fetch config from backend, using fallback minimalConfig", { initTraceId });
-          console.warn("[Reveal SDK] ⚠ Failed to fetch config from backend, using fallback minimalConfig");
         }
       } else {
         loggerRef.logWarn("Config endpoint URL validation failed, using fallback minimalConfig", { initTraceId, error: configUrlValidation.error });
-        console.warn("[Reveal SDK] ⚠ Config endpoint URL validation failed:", configUrlValidation.error);
       }
     } catch (error: any) {
-      loggerRef.logWarn("Error during config fetch, using fallback minimalConfig", { initTraceId, error: error?.message || String(error) });
-      console.error("[Reveal SDK] ✗ Error during config fetch:", error?.message || String(error));
+      loggerRef.logError("Error during config fetch, using fallback minimalConfig", { initTraceId, error: error?.message || String(error) });
       // Continue with minimalConfig fallback
     }
 
@@ -443,11 +488,9 @@ export async function init(
     // Backend may return relative paths (e.g., "/decide"), so we need to resolve them
     let resolvedDecisionEndpoint = finalConfig.decision.endpoint;
     
-    // If decision endpoint is relative (starts with /), resolve it using apiBase or configEndpoint base
+    // If decision endpoint is relative (starts with /), resolve it using resolvedApiBase
     if (resolvedDecisionEndpoint.startsWith("/")) {
-      // Use apiBase if available, otherwise derive from configEndpoint
-      const baseUrl = options.apiBase || (configEndpoint ? configEndpoint.replace(/\/config.*$/, "") : "https://api.revealos.com");
-      resolvedDecisionEndpoint = `${baseUrl}${resolvedDecisionEndpoint}`;
+      resolvedDecisionEndpoint = `${resolvedApiBase}${resolvedDecisionEndpoint}`;
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -461,9 +504,8 @@ export async function init(
     });
 
     if (!urlValidation.valid) {
-      const errorMessage = `[Reveal SDK] SECURITY: Backend URLs must use HTTPS. ${urlValidation.error}`;
+      const errorMessage = `SECURITY: Backend URLs must use HTTPS. ${urlValidation.error}`;
       loggerRef.logError(errorMessage);
-      console.error(errorMessage);
       isDisabled = true;
       isInitialized = false; // Allow retry if desired
       return; // Exit early, no modules initialized
@@ -479,7 +521,6 @@ export async function init(
         if (!eventPipeline || !sessionManager) {
           // For now, just log the signal
           logger?.logDebug("Friction signal received", rawSignal);
-          console.log("[Reveal SDK] Friction signal:", rawSignal);
           return;
         }
 
@@ -524,16 +565,14 @@ export async function init(
         logger?.logDebug("Friction signal received", frictionSignal);
 
         // DEBUG PROBE 1: Log friction signal processing
-        if (debugMode) {
-          console.log("[REVEAL_DEBUG] Friction signal processing:", {
-            type: frictionSignal.type,
-            pageUrl: frictionSignal.pageUrl,
-            selector: frictionSignal.selector,
-            hasExtraKeys: Object.keys(frictionSignal.extra || {}).length,
-            willTrackEventPipeline: true,
-            willCallDecision: !isNudgeActive && (!nudgeDismissalCooldownUntil || now >= nudgeDismissalCooldownUntil),
-          });
-        }
+        logger?.logDebug("Friction signal processing", {
+          type: frictionSignal.type,
+          pageUrl: frictionSignal.pageUrl,
+          selector: frictionSignal.selector,
+          hasExtraKeys: Object.keys(frictionSignal.extra || {}).length,
+          willTrackEventPipeline: true,
+          willCallDecision: !isNudgeActive && (!nudgeDismissalCooldownUntil || now >= nudgeDismissalCooldownUntil),
+        });
 
         // Emit friction event to pipeline
         // CRITICAL: flushImmediately=true ensures friction events are sent before nudge events
@@ -552,12 +591,10 @@ export async function init(
         );
 
         // DEBUG PROBE 1b: Log event ID captured
-        if (debugMode) {
-          console.log("[REVEAL_DEBUG] Friction event captured:", {
-            frictionEventId,
-            type: frictionSignal.type,
-          });
-        }
+        logger?.logDebug("Friction event captured", {
+          frictionEventId,
+          type: frictionSignal.type,
+        });
 
         // Mark activity for session idle handling
         if (sessionManager.markActivity) {
@@ -965,11 +1002,12 @@ export function track(
     return;
   }
   if (!isInitialized) {
-    // Fails open: log to console in debug, but don't break host app
-    console.warn?.(
-      "[Reveal SDK] track() called before init; event ignored",
-      { eventKind, eventType, properties }
-    );
+    // Fails open: log in debug mode, but don't break host app
+    logger?.logWarn("track() called before init; event ignored", {
+      eventKind,
+      eventType,
+      properties,
+    });
     return;
   }
   

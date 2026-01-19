@@ -316,6 +316,8 @@ export function transformBaseEventToBackendFormat(
     user_key: null, // Not available in BaseEvent
     environment: null, // Backend will override from project context
     batch_id: null, // Transport will add this
+    // #region agent log
+    // Note: environment is explicitly set to null here
     path: path || null, // Pathname extracted from pageUrl
     referrer_path: referrerPath, // Pathname from referrer URL
     activation_context: activationContext, // Optional activation context from app

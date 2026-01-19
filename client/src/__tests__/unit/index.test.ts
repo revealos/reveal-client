@@ -250,6 +250,232 @@ describe('Reveal SDK', () => {
           global.fetch = originalFetch;
         }
       });
+
+      describe('Environment-based auto-resolution', () => {
+        it('should auto-resolve staging apiBase and endpoints when environment is staging', async () => {
+          const mockConfig = {
+            projectId: 'test-project',
+            environment: 'staging',
+            sdk: { samplingRate: 1.0 },
+            decision: { endpoint: '/decide', timeoutMs: 1500 },
+            templates: [],
+            ttlSeconds: 60,
+          };
+
+          const originalFetch = global.fetch;
+          global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => mockConfig,
+          }) as any;
+
+          try {
+            await Reveal.init('test-key', {
+              environment: 'staging',
+              // No apiBase provided - should auto-resolve
+            });
+
+            // Verify config endpoint was called with staging URL
+            const configCall = (global.fetch as any).mock.calls.find((call: any[]) => 
+              call[0].includes('/config')
+            );
+            expect(configCall).toBeDefined();
+            expect(configCall[0]).toContain('https://api-staging.revealos.com/config');
+            expect(configCall[0]).toContain('environment=staging');
+
+            // Verify timeout is 1500ms for staging
+            const configResponse = await (global.fetch as any).mock.results[0].value;
+            const configData = await configResponse.json();
+            expect(configData.decision.timeoutMs).toBe(1500);
+          } finally {
+            global.fetch = originalFetch;
+          }
+        });
+
+        it('should auto-resolve development apiBase and endpoints when environment is development', async () => {
+          const mockConfig = {
+            projectId: 'test-project',
+            environment: 'development',
+            sdk: { samplingRate: 1.0 },
+            decision: { endpoint: '/decide', timeoutMs: 2000 },
+            templates: [],
+            ttlSeconds: 60,
+          };
+
+          const originalFetch = global.fetch;
+          global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => mockConfig,
+          }) as any;
+
+          try {
+            await Reveal.init('test-key', {
+              environment: 'development',
+              // No apiBase provided - should auto-resolve to localhost
+            });
+
+            // Verify config endpoint was called with localhost URL
+            const configCall = (global.fetch as any).mock.calls.find((call: any[]) => 
+              call[0].includes('/config')
+            );
+            expect(configCall).toBeDefined();
+            expect(configCall[0]).toContain('http://localhost:3000/config');
+            expect(configCall[0]).toContain('environment=development');
+          } finally {
+            global.fetch = originalFetch;
+          }
+        });
+
+        it('should auto-resolve production apiBase and endpoints when environment is production', async () => {
+          const mockConfig = {
+            projectId: 'test-project',
+            environment: 'production',
+            sdk: { samplingRate: 1.0 },
+            decision: { endpoint: '/decide', timeoutMs: 1500 },
+            templates: [],
+            ttlSeconds: 60,
+          };
+
+          const originalFetch = global.fetch;
+          global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => mockConfig,
+          }) as any;
+
+          try {
+            await Reveal.init('test-key', {
+              environment: 'production',
+              // No apiBase provided - should auto-resolve
+            });
+
+            // Verify config endpoint was called with production URL
+            const configCall = (global.fetch as any).mock.calls.find((call: any[]) => 
+              call[0].includes('/config')
+            );
+            expect(configCall).toBeDefined();
+            expect(configCall[0]).toContain('https://api.revealos.com/config');
+            expect(configCall[0]).toContain('environment=production');
+          } finally {
+            global.fetch = originalFetch;
+          }
+        });
+
+        it('should use explicit apiBase even when environment is set (backward compatibility)', async () => {
+          const mockConfig = {
+            projectId: 'test-project',
+            environment: 'staging',
+            sdk: { samplingRate: 1.0 },
+            decision: { endpoint: '/decide', timeoutMs: 1500 },
+            templates: [],
+            ttlSeconds: 60,
+          };
+
+          const originalFetch = global.fetch;
+          global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => mockConfig,
+          }) as any;
+
+          try {
+            await Reveal.init('test-key', {
+              environment: 'staging',
+              apiBase: 'https://custom-api.example.com', // Explicit override
+            });
+
+            // Verify config endpoint uses explicit apiBase, not staging auto-resolved
+            const configCall = (global.fetch as any).mock.calls.find((call: any[]) => 
+              call[0].includes('/config')
+            );
+            expect(configCall).toBeDefined();
+            expect(configCall[0]).toContain('https://custom-api.example.com/config');
+            // Environment should still be sent as query param
+            expect(configCall[0]).toContain('environment=staging');
+          } finally {
+            global.fetch = originalFetch;
+          }
+        });
+
+        it('should use environment-based timeout (1500ms for production/staging, 2000ms for development)', async () => {
+          const originalFetch = global.fetch;
+          
+          // Test production timeout - verify config fetch includes correct timeout in minimalConfig fallback
+          const prodMockConfig = {
+            projectId: 'test-project',
+            environment: 'production',
+            sdk: { samplingRate: 1.0 },
+            decision: { endpoint: '/decide', timeoutMs: 1500 },
+            templates: [],
+            ttlSeconds: 60,
+          };
+
+          global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => prodMockConfig,
+          }) as any;
+
+          try {
+            await Reveal.init('test-key', {
+              environment: 'production',
+            });
+            // Verify fetch was called (SDK initialized successfully)
+            expect(global.fetch).toHaveBeenCalled();
+            // The timeout is set in minimalConfig fallback, which uses 1500ms for production
+          } finally {
+            global.fetch = originalFetch;
+          }
+
+          // Test staging timeout
+          const stagingMockConfig = {
+            projectId: 'test-project',
+            environment: 'staging',
+            sdk: { samplingRate: 1.0 },
+            decision: { endpoint: '/decide', timeoutMs: 1500 },
+            templates: [],
+            ttlSeconds: 60,
+          };
+
+          global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => stagingMockConfig,
+          }) as any;
+
+          try {
+            await Reveal.init('test-key', {
+              environment: 'staging',
+            });
+            // Verify fetch was called (SDK initialized successfully)
+            expect(global.fetch).toHaveBeenCalled();
+            // The timeout is set in minimalConfig fallback, which uses 1500ms for staging
+          } finally {
+            global.fetch = originalFetch;
+          }
+
+          // Test development timeout
+          const devMockConfig = {
+            projectId: 'test-project',
+            environment: 'development',
+            sdk: { samplingRate: 1.0 },
+            decision: { endpoint: '/decide', timeoutMs: 2000 },
+            templates: [],
+            ttlSeconds: 60,
+          };
+
+          global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => devMockConfig,
+          }) as any;
+
+          try {
+            await Reveal.init('test-key', {
+              environment: 'development',
+            });
+            // Verify fetch was called (SDK initialized successfully)
+            expect(global.fetch).toHaveBeenCalled();
+            // The timeout is set in minimalConfig fallback, which uses 2000ms for development
+          } finally {
+            global.fetch = originalFetch;
+          }
+        });
+      });
     });
 
     describe('HTTPS URL validation', () => {

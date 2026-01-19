@@ -77,7 +77,7 @@ export function createDecisionClient(
   const {
     endpoint,
     projectId,
-    timeoutMs = 400, // Default: 400ms (production-optimized, configurable via entryPoint)
+    timeoutMs = 1500, // Default: 1500ms (production/staging-optimized, configurable via entryPoint)
     clientKey,
     logger,
     transport,

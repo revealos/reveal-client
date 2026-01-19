@@ -152,7 +152,7 @@ describe('Transport', () => {
       expect(options.method).toBe('POST');
       expect(options.headers['Content-Type']).toBe('application/json');
       expect(options.headers['X-Reveal-Client-Key']).toBe('test-key');
-      expect(options.headers['X-Reveal-SDK-Version']).toBe('1.0.0');
+      expect(options.headers['X-Reveal-SDK-Version']).toBe('0.1.0');
       expect(JSON.parse(options.body)).toMatchObject({
         events: events,
       });
@@ -610,7 +610,7 @@ describe('Transport', () => {
       const [, options] = (mockFetch as any).mock.calls[0];
       expect(options.headers['Content-Type']).toBe('application/json');
       expect(options.headers['X-Reveal-Client-Key']).toBe('test-key');
-      expect(options.headers['X-Reveal-SDK-Version']).toBe('1.0.0');
+      expect(options.headers['X-Reveal-SDK-Version']).toBe('0.1.0');
     });
 
     it('should include batch_id, events, and timestamp in payload', async () => {
@@ -693,7 +693,8 @@ describe('Transport', () => {
       );
 
       expect(result).toBeNull();
-      expect(mockLogger.logError).toHaveBeenCalled();
+      // 4xx responses (like 400) are logged as debug, not error
+      expect(mockLogger.logDebug).toHaveBeenCalled();
     });
 
     it('should handle timeout correctly', async () => {
