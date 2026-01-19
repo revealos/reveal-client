@@ -238,7 +238,7 @@ flowchart LR
 
 ## Backend Processing Details
 
-1. **Config** receives the config request and returns client-safe configuration (projectId, environment, SDK settings, decision endpoint/timeout, templates)
+1. **Config** receives the config request and returns client-safe configuration (projectId, environment, SDK settings, decision endpoint/timeout)
 2. **Ingest** receives the event and attaches session context
 3. **Decision Engine** checks user state + friction level
 4. If needed, it returns a plain JSON nudge decision containing:
@@ -273,7 +273,7 @@ The SDK receives a `ClientConfig` object:
     endpoint: string,  // May be relative path like "/decide" or full URL
     timeoutMs: number
   },
-  templates: any[],
+  templates: [], // Always empty - templates are backend-only, decisioning happens server-side
   ttlSeconds: number
 }
 ```
@@ -375,7 +375,7 @@ sequenceDiagram
 9. **Eligibility checks**: Backend may query recent `nudge_shown` events per session to enforce cooldowns and per-session caps before returning a nudge decision
 
 **Data formats:**
-- **ClientConfig**: `{projectId, environment, sdk: {samplingRate}, decision: {endpoint, timeoutMs}, templates, ttlSeconds}`
+- **ClientConfig**: `{projectId, environment, sdk: {samplingRate}, decision: {endpoint, timeoutMs}, templates: [], ttlSeconds}`
 - **EventBatch**: `{projectId, sessionId, event: OutboundEvent[]}`
 - **DecisionRequest**: `{projectId, sessionId, friction: FrictionSignal}`
 - **NudgeDecision**: `{nudgeId, templateId, title?, body?, ctaText?, quadrant?, ...}`

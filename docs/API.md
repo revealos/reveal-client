@@ -17,13 +17,13 @@ Reveal.init(clientKey: string, options?: InitOptions): Promise<void>
 | Option | Type | Default | Who Sets It? | Description |
 |--------|------|---------|--------------|-------------|
 | `clientKey` | `string` | - | **You (required)** | Your project's client key from Reveal dashboard |
-| `apiBase` | `string` | `"https://api.revealos.com"` | You (if self-hosting) | Backend API base URL. Used to construct config, ingest, and decision endpoints. Only needed if self-hosting or using non-default URL |
+| `apiBase` | `string` | Auto-resolved from `environment` | You (if self-hosting) | Backend API base URL. Used to construct config, ingest, and decision endpoints. **If not provided, SDK automatically resolves from `environment` parameter:** `production` → `https://api.revealos.com`, `staging` → `https://api-staging.revealos.com`, `development` → `http://localhost:3000`. Only needed if self-hosting or using non-default URL |
 | `configEndpoint` | `string` | `"{apiBase}/config"` | You (if custom) | Explicit config endpoint. Overrides `apiBase` for config fetch. SDK fetches client-safe configuration from this endpoint during initialization |
 | `ingestEndpoint` | `string` | `"{apiBase}/ingest"` | You (if custom) | Explicit event ingestion endpoint. Overrides `apiBase` |
 | `decisionEndpoint` | `string` | `"{apiBase}/decide"` | You (if custom) | Explicit decision endpoint. Overrides `apiBase`. **Note:** If backend config returns a relative path (e.g., `/decide`), SDK automatically resolves it using `apiBase` |
-| `decisionTimeoutMs` | `number` | `400` (production), `2000` (development) | You (if custom) | Timeout for decision requests in milliseconds. Defaults are environment-aware: 400ms for production (realistic for network + backend processing), 2000ms for development (allows for CORS preflight + logging overhead) |
+| `decisionTimeoutMs` | `number` | `1500` (production/staging), `2000` (development) | You (if custom) | Timeout for decision requests in milliseconds. Defaults are environment-aware: 1500ms for production/staging (realistic for network + backend processing, avoids false negatives), 2000ms for development (allows for CORS preflight + logging overhead) |
 | `debug` | `boolean` | `false` | You (dev only) | Enable debug logging. Set to `true` in development |
-| `environment` | `string` | `"development"` | You | Environment: `"production"` \| `"staging"` \| `"development"`. Used as query param when fetching config |
+| `environment` | `string` | `"development"` | You | Environment: `"production"` \| `"staging"` \| `"development"`. Controls two things: (1) which engine host is called (via auto-resolved `apiBase`), and (2) which environment value is sent to backend as query param for data isolation. **If `apiBase` is not provided, SDK automatically resolves it based on environment:** `production` → `https://api.revealos.com`, `staging` → `https://api-staging.revealos.com`, `development` → `http://localhost:3000` |
 
 **Security Note:** All backend URLs (`configEndpoint`, `ingestEndpoint`, `decisionEndpoint`, `apiBase`) must use HTTPS protocol. The SDK will disable itself at initialization if any non-HTTPS URL is detected. Exception: `http://localhost` and `http://127.0.0.1` are allowed for local development only.
 
@@ -47,7 +47,85 @@ await Reveal.init('proj_abc123', {
   debug: process.env.NODE_ENV === 'development',
   environment: 'development',
 });
+
+// Staging setup (auto-resolves to api-staging.revealos.com)
+await Reveal.init('proj_abc123', {
+  environment: 'staging',
+});
 ```
+
+**⚠️ Environment Selection: Production vs Staging**
+
+**You must explicitly choose between `production` and `staging` environments.** This is a critical decision that affects data isolation and where your events are stored.
+
+**Production** (`environment: 'production'`):
+- **Use for:** Live applications serving real users
+- **API endpoint:** `https://api.revealos.com`
+- **Data storage:** Production database (separate from staging)
+- **Impact:** Events appear in production dashboards and affect production analytics
+
+**Staging** (`environment: 'staging'`):
+- **Use for:** Testing, QA, pre-production validation
+- **API endpoint:** `https://api-staging.revealos.com`
+- **Data storage:** Staging database (completely isolated from production)
+- **Impact:** Events appear only in staging dashboards, never in production
+
+**Why this matters:**
+- **Data isolation:** Staging and production use separate databases. Events sent to staging never appear in production dashboards, and vice versa.
+- **Client key requirement:** You need a separate staging client key from your Reveal dashboard. Production and staging client keys are different.
+- **Testing safety:** Using staging for testing prevents test events from polluting production analytics and ensures your production nudge decisions aren't affected by test data.
+
+---
+
+## Environment Override (Development Only)
+
+**⚠️ Advanced Feature - Development Projects Only**
+
+For development projects, you can override the environment via the `X-Reveal-Environment` header when sending events to the `/ingest` endpoint. This is useful for testing different environments without changing the project configuration.
+
+**Important Restrictions:**
+- **Only works for development projects:** Projects with `environment: "development"` can use this feature
+- **Production/staging projects are protected:** Override is ignored for production and staging projects (security measure)
+- **Valid values:** `"development"`, `"staging"`, or `"production"` (case-insensitive)
+- **Invalid values are ignored:** If an invalid environment is provided, the project's configured environment is used
+
+**Usage Example:**
+
+```bash
+# Development project with override to staging
+curl -X POST https://api.revealos.com/ingest \
+  -H "X-Reveal-Client-Key: dev-project-key" \
+  -H "X-Reveal-Environment: staging" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [{
+      "event_id": "evt_123",
+      "session_id": "sess_456",
+      "timestamp": "2024-01-01T00:00:00Z",
+      "event_kind": "product",
+      "event_type": "button_clicked",
+      "anonymous_id": "anon_789"
+    }]
+  }'
+```
+
+**Behavior:**
+- If project is `development` and header is `staging`: Events are stored with `environment: "staging"`
+- If project is `production` and header is `staging`: Override is ignored, events stored with `environment: "production"`
+- If project is `development` and header is invalid: Override is ignored, events stored with `environment: "development"`
+
+**Environment Mismatch Warnings:**
+
+If the client sends events with an `environment` field that doesn't match the project's configured environment (or override), the backend will:
+1. Log a warning with details about the mismatch
+2. Use the project's configured environment (or override) for data storage
+3. Continue processing the event normally
+
+This ensures data consistency while alerting you to potential misconfigurations.
+
+**Recommendation:** Always use `environment: 'staging'` with a staging client key for testing and development. Only use `environment: 'production'` when deploying to production with your production client key.
+
+**Default behavior:** If you don't specify `environment`, it defaults to `"development"` (localhost). This is only suitable for local development with a local engine server.
 
 ---
 
@@ -137,7 +215,7 @@ During initialization, the SDK fetches configuration from the backend `/config` 
   },
   "decision": {
     "endpoint": "/decide",
-    "timeoutMs": 400
+    "timeoutMs": 1500
   },
   "progress_timeout_rules": {
     "enabled": true,
